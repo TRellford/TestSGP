@@ -1,7 +1,8 @@
 import requests
-import os
+import streamlit as st
 
-ODDS_API_KEY = os.getenv("ODDS_API_KEY")  # Ensure your API key is set in environment variables
+# Retrieve API keys from Streamlit secrets
+ODDS_API_KEY = st.secrets["odds_api_key"]
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds"
 
 def get_available_games():
