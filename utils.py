@@ -1,17 +1,33 @@
 import requests
+import os
+
+ODDS_API_KEY = os.getenv("ODDS_API_KEY")  # Ensure your API key is set in environment variables
+ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds"
 
 def get_available_games():
     """Fetch available NBA games for SGP selection."""
-    response = requests.get("https://api-nba.com/games")
+    response = requests.get(f"{ODDS_API_URL}/?apiKey={ODDS_API_KEY}&regions=us&markets=spreads,totals")
     if response.status_code == 200:
-        return response.json().get('games', [])
+        games = response.json()
+        return [{"id": game["id"], "name": f"{game['home_team']} vs {game['away_team']}"} for game in games]
     return []
 
 def get_player_props(game_id):
-    """Fetch player props for a given game."""
-    response = requests.get(f"https://api-fanduel.com/player_props?game_id={game_id}")
+    """Fetch player props for a given game using The Odds API."""
+    response = requests.get(f"{ODDS_API_URL}/?apiKey={ODDS_API_KEY}&regions=us&markets=player_points,player_assists,player_rebounds&game_id={game_id}")
     if response.status_code == 200:
-        return response.json().get('props', [])
+        odds_data = response.json()
+        props = []
+        for bookmaker in odds_data:
+            for market in bookmaker.get("markets", []):
+                for outcome in market.get("outcomes", []):
+                    props.append({
+                        "id": outcome["name"],
+                        "player": outcome["name"],
+                        "type": market["key"].replace("player_", "").capitalize(),
+                        "odds": outcome["price"]
+                    })
+        return props
     return []
 
 def calculate_parlay_odds(selected_props):
