@@ -8,12 +8,21 @@ ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds"
 def get_available_games():
     """Fetch available NBA games for SGP selection."""
     response = requests.get(f"{ODDS_API_URL}/?apiKey={ODDS_API_KEY}&regions=us&markets=spreads,totals")
-    
+
     if response.status_code == 200:
         games = response.json()
-        st.write("API Response for Games:", games)  # Debugging: Show raw API data
-        return [{"id": game.get("id", "N/A"), "name": f"{game.get('home_team', 'Unknown')} vs {game.get('away_team', 'Unknown')}"} for game in games]
-
+        st.write("🔍 **DEBUG: API Response for Games:**", games)  # Prints the full API response
+        
+        # Check if 'games' is a list or dict
+        if isinstance(games, list):  
+            return [{"id": game.get("id", "MISSING_ID"), "name": f"{game.get('home_team', 'Unknown')} vs {game.get('away_team', 'Unknown')}"} for game in games]
+        else:
+            st.error("⚠️ API returned unexpected structure: Expected a list but got a dictionary.")
+            st.write("🔍 **Full API Response:**", games)
+    
+    else:
+        st.error(f"⚠️ API Request Failed: {response.status_code} - {response.text}")
+    
     return []
 
 def get_player_props(game_id):
