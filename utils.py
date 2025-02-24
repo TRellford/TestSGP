@@ -8,9 +8,12 @@ ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds"
 def get_available_games():
     """Fetch available NBA games for SGP selection."""
     response = requests.get(f"{ODDS_API_URL}/?apiKey={ODDS_API_KEY}&regions=us&markets=spreads,totals")
+    
     if response.status_code == 200:
         games = response.json()
-        return [{"id": game["id"], "name": f"{game['home_team']} vs {game['away_team']}"} for game in games]
+        st.write("API Response for Games:", games)  # Debugging: Show raw API data
+        return [{"id": game.get("id", "N/A"), "name": f"{game.get('home_team', 'Unknown')} vs {game.get('away_team', 'Unknown')}"} for game in games]
+
     return []
 
 def get_player_props(game_id):
@@ -21,24 +24,25 @@ def get_player_props(game_id):
     
     if response.status_code == 200:
         odds_data = response.json()
-        props = []
+        st.write("API Response for Props:", odds_data)  # Debugging output
 
+        props = []
         for game in odds_data:
-            if game["id"] == game_id:  # Ensure we're pulling data for the selected game
-                for bookmaker in game.get("bookmakers", []):  # Corrected key
+            if "id" in game and game["id"] == game_id:  # Ensure "id" exists
+                for bookmaker in game.get("bookmakers", []):
                     for market in bookmaker.get("markets", []):
                         for outcome in market.get("outcomes", []):
                             props.append({
-                                "id": outcome["name"],
-                                "player": outcome["name"],
+                                "id": outcome.get("name", "N/A"),  # Avoid KeyError
+                                "player": outcome.get("name", "Unknown"),
                                 "type": market["key"].replace("player_", "").capitalize(),
-                                "odds": outcome["price"]
+                                "odds": outcome.get("price", "N/A")  # Avoid missing odds
                             })
 
-        return props if props else [{"error": "No player props found"}]  # Debugging output
+        return props if props else [{"error": "No player props found"}]
 
     return [{"error": f"API Request Failed: {response.status_code}, {response.text}"}]
-    
+
 def calculate_parlay_odds(selected_props):
     """Calculate the final parlay odds."""
     total_odds = 1.0
