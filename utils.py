@@ -37,4 +37,12 @@ def get_player_props(game_id):
 
         return props if props else [{"error": "No player props found"}]  # Debugging output
 
-    return [{"error": f"API Request Failed: {response.status_code}, {response.text}"}]  # Debugging output
+    return [{"error": f"API Request Failed: {response.status_code}, {response.text}"}]
+    
+def calculate_parlay_odds(selected_props):
+    """Calculate the final parlay odds."""
+    total_odds = 1.0
+    for prop in selected_props:
+        prop_odds = prop['odds']
+        total_odds *= (1 + (prop_odds / 100) if prop_odds > 0 else 1 + (100 / abs(prop_odds)))
+    return round(total_odds, 2)# Debugging output
