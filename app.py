@@ -1,27 +1,63 @@
 import streamlit as st
-from utils import get_available_games, get_player_props, calculate_parlay_odds
+import datetime
+import math
+from utils import (
+    fetch_best_props, fetch_sgp_builder, fetch_sharp_money_trends,
+    get_nba_games
+)
 
-st.title("Same Game Parlay Builder")
+st.set_page_config(page_title="NBA Betting AI", layout="wide")
 
-# Game Selection
-games = get_available_games()
-game_options = {game['id']: game['name'] for game in games}
-selected_game = st.selectbox("Select a Game", options=list(game_options.keys()), format_func=lambda x: game_options[x])
+# Sidebar Navigation
+st.sidebar.title("🔍 Navigation")
+menu_option = st.sidebar.selectbox("Select a Section:", ["Same Game Parlay", "SGP+"])
 
-if selected_game:
-    # Fetch Player Props from The Odds API
-    props = get_player_props(selected_game)
-    if not props:
-        st.warning("No player props available for this game.")
-    else:
-        prop_options = {prop['id']: f"{prop['player']} - {prop['type']} ({prop['odds']})" for prop in props}
-        selected_props = st.multiselect("Select Props (1-8)", options=list(prop_options.keys()), format_func=lambda x: prop_options[x])
+
+# Same Game Parlay (SGP)
+if menu_option == "Same Game Parlay":
+    st.header("🎯 Same Game Parlay (SGP) - One Game Only")
+
+    date_option = st.radio("Choose Game Date:", ["Today's Games", "Tomorrow's Games"], key="sgp_date")
+    game_date = datetime.date.today() if date_option == "Today's Games" else datetime.date.today() + datetime.timedelta(days=1)
+    
+    available_games = get_nba_games(game_date)
+    
+    st.write(f"📅 Fetching games for: {game_date.strftime('%Y-%m-%d')}")
+    st.write(f"🎮 Number of games found: {len(available_games)}")
+
+    if available_games:
+        game_labels = [f"{game['home_team']} vs {game['away_team']}" for game in available_games]
+        selected_game_label = st.selectbox("Select a Game:", game_labels, key="sgp_game")
+        selected_game = next(g for g in available_games if f"{g['home_team']} vs {g['away_team']}" == selected_game_label)
         
-        if selected_props:
-            if len(selected_props) > 8:
-                st.warning("You can select up to 8 props only.")
-            else:
-                # Calculate Final Parlay Odds
-                selected_props_data = [prop for prop in props if prop['id'] in selected_props]
-                final_odds = calculate_parlay_odds(selected_props_data)
-                st.subheader(f"Final Parlay Odds: {final_odds}")
+        num_props = st.slider("Number of Props (1-8):", 1, 8, 1, key="sgp_num_props")
+        
+        if st.button("Generate SGP Prediction"):
+            sgp_result = fetch_sgp_builder(selected_game, num_props=num_props)
+            st.write(sgp_result)
+    else:
+        st.warning("🚨 No NBA games found for the selected date.")
+
+# SGP+ (Multi-Game Parlay)
+elif menu_option == "SGP+":
+    st.header("🔥 Multi-Game Parlay (SGP+) - Select 2 to 12 Games")
+    
+    today_games = get_nba_games(datetime.date.today())
+    tomorrow_games = get_nba_games(datetime.date.today() + datetime.timedelta(days=1))
+    all_games = today_games + tomorrow_games
+    game_labels = [f"{game['home_team']} vs {game['away_team']}" for game in all_games]
+    selected_labels = st.multiselect("Select Games (Min: 2, Max: 12):", game_labels)
+    selected_games = [g for g in all_games if f"{g['home_team']} vs {g['away_team']}" in selected_labels]
+    
+    if len(selected_games) < 2:
+        st.warning("⚠️ You must select at least 2 games.")
+    elif len(selected_games) > 12:
+        st.warning("⚠️ You cannot select more than 12 games.")
+    else:
+        max_props_per_game = math.floor(24 / len(selected_games))
+        props_per_game = st.slider(f"Choose Props Per Game (Max {max_props_per_game}):", 1, max_props_per_game)
+        
+        if st.button("Generate SGP+ Prediction"):
+            num_props_total = props_per_game * len(selected_games)
+            sgp_plus_result = fetch_sgp_builder(selected_games, num_props=num_props_total, multi_game=True)
+            st.write(sgp_plus_result)
