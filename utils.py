@@ -1,61 +1,72 @@
 import requests
 import streamlit as st
 
-# Retrieve API key from Streamlit secrets
+# API Configuration
 ODDS_API_KEY = st.secrets["odds_api_key"]
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds"
+BALL_DONT_LIE_API_URL = "https://api.balldontlie.io/v1"
 
-def get_available_games():
-    """Fetch available NBA games for SGP selection."""
-    response = requests.get(f"{ODDS_API_URL}/?apiKey={ODDS_API_KEY}&regions=us&markets=spreads,totals")
-
-    if response.status_code == 200:
-        games = response.json()
-        st.write("🔍 **DEBUG: API Response for Games:**", games)  # Prints the full API response
-        
-        # Check if 'games' is a list or dict
-        if isinstance(games, list):  
-            return [{"id": game.get("id", "MISSING_ID"), "name": f"{game.get('home_team', 'Unknown')} vs {game.get('away_team', 'Unknown')}"} for game in games]
-        else:
-            st.error("⚠️ API returned unexpected structure: Expected a list but got a dictionary.")
-            st.write("🔍 **Full API Response:**", games)
+def get_nba_games(date):
+    """Fetch NBA games from Balldontlie API."""
+    url = f"{BALL_DONT_LIE_API_URL}/games"
+    headers = {"Authorization": st.secrets["balldontlie_api_key"]}
+    params = {"dates[]": date.strftime("%Y-%m-%d")}
+    response = requests.get(url, headers=headers, params=params)
     
-    else:
-        st.error(f"⚠️ API Request Failed: {response.status_code} - {response.text}")
+    if response.status_code != 200:
+        st.error(f"❌ Error fetching games: {response.status_code}")
+        return []
     
-    return []
+    games_data = response.json().get("data", [])
+    formatted_games = [{
+        "home_team": game["home_team"]["full_name"],
+        "away_team": game["visitor_team"]["full_name"],
+        "game_id": game["id"]
+    } for game in games_data]
+    return formatted_games
 
-def get_player_props(game_id):
-    """Fetch player props for a given game using The Odds API."""
-    url = f"{ODDS_API_URL}?apiKey={ODDS_API_KEY}&regions=us&markets=player_points,player_assists,player_rebounds"
+def fetch_best_props(selected_game):
+    """Fetch best player props from The Odds API."""
+    response = requests.get(
+        f"{ODDS_API_URL}",
+        params={"apiKey": ODDS_API_KEY, "regions": "us", "markets": "player_points,player_assists,player_rebounds"}
+    )
     
-    response = requests.get(url)
+    if response.status_code != 200:
+        st.error(f"❌ Error fetching props: {response.status_code}")
+        return []
     
-    if response.status_code == 200:
-        odds_data = response.json()
-        st.write("API Response for Props:", odds_data)  # Debugging output
+    odds_data = response.json()
+    props = []
+    for game in odds_data:
+        if game["home_team"] == selected_game["home_team"] and game["away_team"] == selected_game["away_team"]:
+            for bookmaker in game.get("bookmakers", []):
+                for market in bookmaker.get("markets", []):
+                    for outcome in market.get("outcomes", []):
+                        props.append({
+                            "player": outcome["name"],
+                            "type": market["key"].replace("player_", "").capitalize(),
+                            "odds": outcome["price"]
+                        })
+    return props
 
-        props = []
-        for game in odds_data:
-            if "id" in game and game["id"] == game_id:  # Ensure "id" exists
-                for bookmaker in game.get("bookmakers", []):
-                    for market in bookmaker.get("markets", []):
-                        for outcome in market.get("outcomes", []):
-                            props.append({
-                                "id": outcome.get("name", "N/A"),  # Avoid KeyError
-                                "player": outcome.get("name", "Unknown"),
-                                "type": market["key"].replace("player_", "").capitalize(),
-                                "odds": outcome.get("price", "N/A")  # Avoid missing odds
-                            })
-
-        return props if props else [{"error": "No player props found"}]
-
-    return [{"error": f"API Request Failed: {response.status_code}, {response.text}"}]
-
-def calculate_parlay_odds(selected_props):
-    """Calculate the final parlay odds."""
-    total_odds = 1.0
-    for prop in selected_props:
-        prop_odds = prop['odds']
-        total_odds *= (1 + (prop_odds / 100) if prop_odds > 0 else 1 + (100 / abs(prop_odds)))
-    return round(total_odds, 2)# Debugging output
+def fetch_sgp_builder(selected_game, num_props=1, multi_game=False):
+    """Generate optimized SGP using AI-based filtering and confidence scores."""
+    props = fetch_best_props(selected_game) if not multi_game else []
+    if not props:
+        return "No valid props found."
+    
+    # Sorting props by AI confidence score (example logic, replace with actual model)
+    sorted_props = sorted(props, key=lambda x: x["odds"], reverse=True)[:num_props]
+    
+    combined_odds = 1.0
+    for prop in sorted_props:
+        decimal_odds = (prop["odds"] / 100 + 1) if prop["odds"] > 0 else (1 + 100 / abs(prop["odds"]))
+        combined_odds *= decimal_odds
+    
+    american_odds = int((combined_odds - 1) * 100) if combined_odds > 2 else int(-100 / (combined_odds - 1))
+    
+    return {
+        "selected_props": sorted_props,
+        "combined_odds": american_odds
+    }
