@@ -98,7 +98,7 @@ else:
                     # Automatically select top N props based on confidence
                     prop_confidence_list = []
                     for prop, prop_data in filtered_props.items():
-                        player_name = prop.split()[0] + " " + prop.split()[1]  # Simplified parsing (e.g., "Jordan Poole")
+                        player_name = prop.split()[0] + " " + prop.split()[1]  # e.g., "Tim Hardaway"
                         player_stats = get_player_stats(player_name, current_season_year)
                         confidence_score = predict_prop_confidence(prop, prop_data, player_stats, selected_game)
                         line_discrepancy = detect_line_discrepancies(prop_data['odds'], confidence_score)
