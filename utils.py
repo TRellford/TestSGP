@@ -7,30 +7,45 @@ import random
 
 # Constants
 SEASON = "2023"  # Adjust for current NBA season
+BALL_DONT_LIE_API_URL = "https://api.balldontlie.io/v1"
 
-def fetch_games():
-    """Fetch today's NBA games from balldontlie API."""
-    today = date.today().isoformat()
-    url = f"https://www.balldontlie.io/api/v1/games?start_date={today}&end_date={today}"
-    
+def fetch_games(date):
+    """Fetch NBA games from Balldontlie API, modified to support 2-12 game selection."""
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        if "data" in data and len(data["data"]) > 0:
-            games = [
-                {
-                    "id": game['id'],
-                    "display": f"{game['home_team']['abbreviation']} vs {game['visitor_team']['abbreviation']}",
-                    "home_team": game['home_team']['full_name'],
-                    "away_team": game['visitor_team']['full_name']
-                }
-                for game in data['data']
-            ]
-            return games if games else [{"display": "No games available"}]
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching games: {e}")
-        return [{"display": "Error fetching games"}]
+        url = f"{BALL_DONT_LIE_API_URL}/games"
+        headers = {"Authorization": st.secrets["balldontlie_api_key"]}
+        params = {"dates[]": date.strftime("%Y-%m-%d")}
+
+        response = requests.get(url, headers=headers, params=params)
+
+        if response.status_code == 401:
+            st.error("❌ Unauthorized (401). Check your Balldontlie API key in secrets.")
+            return []
+        if response.status_code != 200:
+            st.error(f"❌ Error fetching games: {response.status_code} - {response.text}")
+            return []
+
+        games_data = response.json().get("data", [])
+
+        if not games_data:
+            st.warning(f"⚠️ No NBA games found for {date.strftime('%Y-%m-%d')}.")
+            return []
+
+        formatted_games = [
+            {
+                "id": game["id"],
+                "display": f"{game['home_team']['abbreviation']} vs {game['visitor_team']['abbreviation']}",
+                "home_team": game["home_team"]["full_name"],
+                "away_team": game["visitor_team"]["full_name"],
+                "date": game["date"]
+            }
+            for game in games_data
+        ]
+        return formatted_games
+
+    except Exception as e:
+        st.error(f"❌ Unexpected error fetching games: {e}")
+        return []
 
 def fetch_props(game_id):
     """Fetch player props and alternate lines from The Odds API."""
@@ -60,17 +75,17 @@ def fetch_props(game_id):
 
 def get_player_stats(player_name):
     """Fetch player season stats from balldontlie API."""
-    url = f"https://www.balldontlie.io/api/v1/players?search={player_name}"
+    url = f"{BALL_DONT_LIE_API_URL}/players?search={player_name}"
     try:
-        response = requests.get(url)
+        response = requests.get(url, headers={"Authorization": st.secrets["balldontlie_api_key"]})
         response.raise_for_status()
         players = response.json()['data']
         if not players:
             return None
         player_id = players[0]['id']
         
-        stats_url = f"https://www.balldontlie.io/api/v1/season_averages?season={SEASON}&player_ids[]={player_id}"
-        stats_response = requests.get(stats_url)
+        stats_url = f"{BALL_DONT_LIE_API_URL}/season_averages?season={SEASON}&player_ids[]={player_id}"
+        stats_response = requests.get(stats_url, headers={"Authorization": st.secrets["balldontlie_api_key"]})
         stats_response.raise_for_status()
         stats_data = stats_response.json()['data']
         return stats_data[0] if stats_data else None
@@ -104,11 +119,22 @@ def get_risk_level(odds):
     else:
         return "🔴 Very High Risk"
 
+def american_odds_to_string(odds):
+    """Convert odds to string format with + or -."""
+    if odds > 0:
+        return f"+{int(odds)}"
+    return str(int(odds))
+
 def calculate_parlay_odds(odds_list):
-    """Calculate combined parlay odds from a list of American odds."""
+    """Calculate combined parlay odds from a list of American odds and return in American format."""
     decimal_odds = [1 + (abs(odds) / 100) if odds < 0 else (odds / 100) + 1 for odds in odds_list]
-    final_odds = np.prod(decimal_odds)
-    return round(final_odds, 2)
+    final_decimal_odds = np.prod(decimal_odds)
+    # Convert back to American odds
+    if final_decimal_odds > 2:
+        american_odds = (final_decimal_odds - 1) * 100
+    else:
+        american_odds = -100 / (final_decimal_odds - 1)
+    return round(american_odds, 0)
 
 def bayesian_update(prior, likelihood, evidence):
     """Bayesian Inference for updating confidence scores."""
