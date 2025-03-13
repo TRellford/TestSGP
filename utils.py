@@ -8,6 +8,9 @@ from scipy.stats import poisson
 BALL_DONT_LIE_API_URL = "https://api.balldontlie.io/v1"
 ODDS_API_URL = "https://api.the-odds-api.com/v4"
 
+# Simple in-memory cache for player stats
+player_stats_cache = {}
+
 def get_current_season_year():
     """Determine the current NBA season year based on today's date."""
     today = date.today()
@@ -112,7 +115,11 @@ def fetch_props(event_id):
         return {}
 
 def get_player_stats(player_name, season):
-    """Fetch player season stats from balldontlie API for the given season."""
+    """Fetch player season stats from balldontlie API with caching."""
+    cache_key = f"{player_name}_{season}"
+    if cache_key in player_stats_cache:
+        return player_stats_cache[cache_key]
+
     url = f"{BALL_DONT_LIE_API_URL}/players?search={player_name}"
     try:
         response = requests.get(url, headers={"Authorization": st.secrets["balldontlie_api_key"]})
@@ -126,9 +133,14 @@ def get_player_stats(player_name, season):
         stats_response = requests.get(stats_url, headers={"Authorization": st.secrets["balldontlie_api_key"]})
         stats_response.raise_for_status()
         stats_data = stats_response.json()['data']
-        return stats_data[0] if stats_data else None
+        player_stats = stats_data[0] if stats_data else None
+        player_stats_cache[cache_key] = player_stats
+        return player_stats
     except requests.exceptions.RequestException as e:
-        st.error(f"Error fetching player stats for {player_name}: {e}")
+        if response.status_code == 429:
+            st.error("⚠️ Rate limit exceeded for balldontlie API. Please wait and try again later.")
+        else:
+            st.error(f"Error fetching player stats for {player_name}: {e}")
         return None
 
 def get_initial_confidence(odds):
