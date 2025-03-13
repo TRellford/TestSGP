@@ -1,6 +1,6 @@
 import requests
 import numpy as np
-from datetime import date
+from datetime import date, datetime
 import streamlit as st
 from scipy.stats import poisson
 import random
@@ -8,6 +8,7 @@ import random
 # Constants
 SEASON = "2023"  # Adjust for current NBA season
 BALL_DONT_LIE_API_URL = "https://api.balldontlie.io/v1"
+ODDS_API_URL = "https://api.the-odds-api.com/v4"
 
 def fetch_games(date):
     """Fetch NBA games from Balldontlie API, modified to support 2-12 game selection."""
@@ -47,20 +48,42 @@ def fetch_games(date):
         st.error(f"❌ Unexpected error fetching games: {e}")
         return []
 
-def fetch_props(game_id):
+def fetch_odds_api_events(date):
+    """Fetch all NBA events from The Odds API for a given date."""
+    api_key = st.secrets.get("odds_api_key", None)
+    if not api_key:
+        st.error("❌ The Odds API key is missing in secrets. Please add 'odds_api_key' to your Streamlit secrets.")
+        return []
+
+    url = f"{ODDS_API_URL}/sports/basketball_nba/events?date={date.strftime('%Y-%m-%d')}&apiKey={api_key}"
+    
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        st.write(f"Debug: The Odds API events response for date {date}: {data}")  # Debug log
+        return data if isinstance(data, list) else []
+    except requests.exceptions.RequestException as e:
+        st.error(f"❌ Error fetching events from The Odds API: {e}")
+        if "429" in str(e):
+            st.error("⚠️ The Odds API rate limit exceeded. Check your usage at https://the-odds-api.com/.")
+        return []
+
+def fetch_props(event_id):
     """Fetch player props and alternate lines from The Odds API with detailed logging."""
     api_key = st.secrets.get("odds_api_key", None)
     if not api_key:
         st.error("❌ The Odds API key is missing in secrets. Please add 'odds_api_key' to your Streamlit secrets.")
         return {}
 
-    url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/events/{game_id}/odds?regions=us&markets=player_points,player_rebounds,player_assists&oddsFormat=american&apiKey={api_key}"
+    url = f"{ODDS_API_URL}/sports/basketball_nba/events/{event_id}/odds?regions=us&markets=player_points,player_rebounds,player_assists&oddsFormat=american&apiKey={api_key}"
     
     try:
+        st.write(f"Debug: Fetching props with URL: {url}")  # Log the URL
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
-        st.write(f"Debug: The Odds API response for game {game_id}: {data}")  # Debug log
+        st.write(f"Debug: The Odds API response for event {event_id}: {data}")  # Debug log
 
         props = {}
         if 'bookmakers' in data and data['bookmakers']:
@@ -75,11 +98,11 @@ def fetch_props(game_id):
                             'risk_level': get_risk_level(odds)
                         }
         else:
-            st.warning(f"Debug: No bookmakers or markets found for game {game_id}.")
+            st.warning(f"Debug: No bookmakers or markets found for event {event_id}.")
         return props
 
     except requests.exceptions.RequestException as e:
-        st.error(f"❌ Error fetching props for game {game_id}: {e}")
+        st.error(f"❌ Error fetching props for event {event_id}: {e}")
         if "429" in str(e):
             st.error("⚠️ The Odds API rate limit exceeded. Check your usage at https://the-odds-api.com/.")
         return {}
@@ -226,7 +249,7 @@ def get_sharp_money_insights(selected_props):
     for game, props in selected_props.items():
         for prop in props:
             # Simulate fetching odds movement (requires historical odds or multiple calls)
-            url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds-history?regions=us&markets=player_points,player_rebounds,player_assists&oddsFormat=american&apiKey={api_key}"
+            url = f"{ODDS_API_URL}/sports/basketball_nba/odds-history?regions=us&markets=player_points,player_rebounds,player_assists&oddsFormat=american&apiKey={api_key}"
             try:
                 response = requests.get(url)
                 response.raise_for_status()
