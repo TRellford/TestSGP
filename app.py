@@ -9,7 +9,7 @@ from datetime import date
 st.set_page_config(page_title="SGP+ Builder", layout="wide")
 st.title("Same Game Parlay Plus (SGP+)")
 
-# Sidebar for Odds Filtering and Prop Suggestions
+# Sidebar for Odds Filtering and Props Selection
 st.sidebar.subheader("Odds Filter")
 use_odds_filter = st.sidebar.checkbox("Apply Odds Range Filter", value=False)
 min_odds, max_odds = -1000, 1000  # Default: no filtering
@@ -17,10 +17,10 @@ if use_odds_filter:
     min_odds = st.sidebar.number_input("Min Odds", min_value=-1000, max_value=1000, value=-350, step=10)
     max_odds = st.sidebar.number_input("Max Odds", min_value=-1000, max_value=1000, value=200, step=10)
 
-st.sidebar.subheader("Prop Suggestions")
+st.sidebar.subheader("Props per Game")
 props_per_game = st.sidebar.number_input(
-    "Number of Props Suggested per Game", min_value=1, max_value=8, value=3, step=1,
-    help="Select how many props to suggest per game (1-8)."
+    "Number of Props per Game", min_value=1, max_value=8, value=3, step=1,
+    help="Select how many props to include per game (1-8)."
 )
 
 # Fetch and Display Games using balldontlie API
