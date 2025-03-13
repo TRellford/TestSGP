@@ -3,6 +3,8 @@ import numpy as np
 from datetime import date
 import streamlit as st
 from scipy.stats import poisson
+import time
+import random
 
 # Constants
 BALL_DONT_LIE_API_URL = "https://api.balldontlie.io/v1"
@@ -114,34 +116,54 @@ def fetch_props(event_id):
             st.error("⚠️ The Odds API rate limit exceeded. Check your usage at https://the-odds-api.com/.")
         return {}
 
-def get_player_stats(player_name, season):
-    """Fetch player season stats from balldontlie API with caching."""
+def get_player_stats(player_name, season, max_retries=3, initial_delay=2):
+    """Fetch player season stats from balldontlie API with caching, delay, and retries."""
     cache_key = f"{player_name}_{season}"
     if cache_key in player_stats_cache:
         return player_stats_cache[cache_key]
 
-    url = f"{BALL_DONT_LIE_API_URL}/players?search={player_name}"
-    try:
-        response = requests.get(url, headers={"Authorization": st.secrets["balldontlie_api_key"]})
-        response.raise_for_status()
-        players = response.json()['data']
-        if not players:
-            return None
-        player_id = players[0]['id']
-        
-        stats_url = f"{BALL_DONT_LIE_API_URL}/season_averages?season={season}&player_ids[]={player_id}"
-        stats_response = requests.get(stats_url, headers={"Authorization": st.secrets["balldontlie_api_key"]})
-        stats_response.raise_for_status()
-        stats_data = stats_response.json()['data']
-        player_stats = stats_data[0] if stats_data else None
-        player_stats_cache[cache_key] = player_stats
-        return player_stats
-    except requests.exceptions.RequestException as e:
-        if response.status_code == 429:
-            st.error("⚠️ Rate limit exceeded for balldontlie API. Please wait and try again later.")
-        else:
-            st.error(f"Error fetching player stats for {player_name}: {e}")
-        return None
+    # Add a delay before making the API request to avoid rate limits
+    time.sleep(initial_delay)
+
+    retries = 0
+    while retries < max_retries:
+        try:
+            # Fetch player ID
+            url = f"{BALL_DONT_LIE_API_URL}/players?search={player_name}"
+            response = requests.get(url, headers={"Authorization": st.secrets["balldontlie_api_key"]})
+            response.raise_for_status()
+            players = response.json()['data']
+            if not players:
+                player_stats_cache[cache_key] = None
+                return None
+            player_id = players[0]['id']
+
+            # Add a small delay before the second request to fetch stats
+            time.sleep(initial_delay)
+
+            # Fetch player stats
+            stats_url = f"{BALL_DONT_LIE_API_URL}/season_averages?season={season}&player_ids[]={player_id}"
+            stats_response = requests.get(stats_url, headers={"Authorization": st.secrets["balldontlie_api_key"]})
+            stats_response.raise_for_status()
+            stats_data = stats_response.json()['data']
+            player_stats = stats_data[0] if stats_data else None
+            player_stats_cache[cache_key] = player_stats
+            return player_stats
+
+        except requests.exceptions.RequestException as e:
+            if response.status_code == 429:
+                retries += 1
+                wait_time = initial_delay * (2 ** retries)  # Exponential backoff: 2s, 4s, 8s
+                st.warning(f"Rate limit exceeded for balldontlie API. Retrying in {wait_time} seconds... (Attempt {retries}/{max_retries})")
+                time.sleep(wait_time)
+            else:
+                st.error(f"Error fetching player stats for {player_name}: {e}")
+                player_stats_cache[cache_key] = None
+                return None
+
+    st.error(f"⚠️ Failed to fetch stats for {player_name} after {max_retries} retries due to rate limits. Please try again later.")
+    player_stats_cache[cache_key] = None
+    return None
 
 def get_initial_confidence(odds):
     """Initial confidence score based on odds (simplified heuristic)."""
@@ -214,7 +236,4 @@ def get_sharp_money_insights(selected_props):
     insights = {}
     for game, props in selected_props.items():
         for prop in props:
-            odds_shift = random.uniform(-0.05, 0.15)  # Simulated odds movement
-            sharp_indicator = "🔥 Sharp Money" if odds_shift > 0.1 else "Public Money"
-            insights[prop] = {"Sharp Indicator": sharp_indicator, "Odds Shift %": round(odds_shift * 100, 2)}
-    return insights
+            odds_shift = random.uniform(-0.05, 0
