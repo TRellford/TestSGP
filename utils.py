@@ -4,6 +4,7 @@ from datetime import date, datetime
 import streamlit as st
 from scipy.stats import poisson
 import random
+import re
 
 # Constants
 SEASON = "2023"  # Adjust for current NBA season
@@ -214,11 +215,29 @@ def detect_line_discrepancies(book_odds, model_confidence):
     return model_odds > implied_odds * 1.1  # Flag if model odds are 10% better
 
 def predict_prop_confidence(prop, book_odds, player_stats, game_context):
-    """Predict confidence score using advanced models."""
+    """Predict confidence score using advanced models with robust parsing."""
+    # Split the prop string into parts
     prop_parts = prop.split()
-    prop_type = prop_parts[-1].lower()  # e.g., points, rebounds, assists
-    prop_value = float(prop_parts[-2])  # e.g., 20.5
     
+    # Extract prop type (last word, e.g., "Points", "Rebounds", "Assists")
+    prop_type = prop_parts[-1].lower()
+    if prop_type not in ['points', 'rebounds', 'assists']:
+        prop_type = 'unknown'  # Handle unexpected prop types
+    
+    # Find the numeric value in the prop string (e.g., "20.5")
+    prop_value = None
+    for part in prop_parts:
+        # Look for a number (integer or decimal)
+        match = re.search(r'^\d+(\.\d+)?$', part)
+        if match:
+            prop_value = float(match.group())
+            break
+    
+    if prop_value is None:
+        # If no numeric value is found, use a default or skip advanced prediction
+        st.warning(f"Debug: No numeric value found in prop '{prop}'. Using default confidence.")
+        return get_initial_confidence(book_odds)  # Fallback to initial confidence
+
     # Initial confidence (prior)
     prior_confidence = get_initial_confidence(book_odds)
     
