@@ -79,13 +79,14 @@ def fetch_odds_api_events(date):
         return []
 
 def fetch_props(event_id):
-    """Fetch player props from The Odds API."""
+    """Fetch player props from The Odds API including points, rebounds, assists, steals, and blocks."""
     api_key = st.secrets.get("odds_api_key", None)
     if not api_key:
         st.error("❌ The Odds API key is missing in secrets. Please add 'odds_api_key' to your Streamlit secrets.")
         return {}
 
-    url = f"{ODDS_API_URL}/sports/basketball_nba/events/{event_id}/odds?regions=us&markets=player_points,player_rebounds,player_assists&oddsFormat=american&apiKey={api_key}"
+    # Include all desired markets: points, rebounds, assists, steals, blocks
+    url = f"{ODDS_API_URL}/sports/basketball_nba/events/{event_id}/odds?regions=us&markets=player_points,player_rebounds,player_assists,player_steals,player_blocks&oddsFormat=american&apiKey={api_key}"
     
     try:
         response = requests.get(url)
@@ -96,7 +97,7 @@ def fetch_props(event_id):
         if 'bookmakers' in data and data['bookmakers']:
             for bookmaker in data['bookmakers'][:1]:  # Use first bookmaker for simplicity
                 for market in bookmaker['markets']:
-                    prop_type = market['key'].replace('player_', '')  # e.g., 'points'
+                    prop_type = market['key'].replace('player_', '')  # e.g., 'points', 'rebounds', 'assists', 'steals', 'blocks'
                     for outcome in market['outcomes']:
                         if 'point' in outcome:
                             prop_name = f"{outcome['description']} {outcome['name']} {outcome['point']} {prop_type}"
@@ -108,6 +109,8 @@ def fetch_props(event_id):
                                 'prop_type': prop_type,
                                 'point': outcome['point']
                             }
+        if not props:
+            st.info(f"No props (points, rebounds, assists, steals, blocks) available for event {event_id} from the bookmaker.")
         return props
 
     except requests.exceptions.RequestException as e:
@@ -208,8 +211,8 @@ def calculate_parlay_odds(odds_list):
     return round(american_odds, 0)
 
 def predict_prop_confidence(prop, prop_data, player_stats, game_context):
-    """Predict confidence score using simplified models."""
-    prop_type = prop_data['prop_type']
+    """Predict confidence score using simplified models for all prop types."""
+    prop_type = prop_data['prop_type']  # e.g., 'points', 'rebounds', 'assists', 'steals', 'blocks'
     prop_value = prop_data['point']
     book_odds = prop_data['odds']
     
@@ -218,7 +221,13 @@ def predict_prop_confidence(prop, prop_data, player_stats, game_context):
     
     # Adjust confidence with player stats if available
     if player_stats:
-        stat_key = {'points': 'pts', 'rebounds': 'reb', 'assists': 'ast'}[prop_type]
+        stat_key = {
+            'points': 'pts',
+            'rebounds': 'reb',
+            'assists': 'ast',
+            'steals': 'stl',
+            'blocks': 'blk'
+        }.get(prop_type, 'pts')  # Default to 'pts' if prop_type is unexpected
         avg = player_stats.get(stat_key, 0)
         if prop_value > 0:
             adjustment = min(0.9, max(0.1, avg / prop_value))
@@ -236,5 +245,7 @@ def get_sharp_money_insights(selected_props):
     insights = {}
     for game, props in selected_props.items():
         for prop in props:
-            odds_shift = random.uniform(-0.05, 0
-                                       )
+            odds_shift = random.uniform(-0.05, 0.15)  # Simulated odds movement
+            sharp_indicator = "🔥 Sharp Money" if odds_shift > 0.1 else "Public Money"
+            insights[prop] = {"Sharp Indicator": sharp_indicator, "Odds Shift %": round(odds_shift * 100, 2)}
+    return insights
