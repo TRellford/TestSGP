@@ -13,7 +13,7 @@ st.title("Same Game Parlay Plus (SGP+)")
 current_date = date.today()
 current_season_year = get_current_season_year()
 
-# Sidebar for Odds Filtering and Props Selection
+# Sidebar for Odds Filtering, Props Selection, and Prop Type Filter
 st.sidebar.subheader("Odds Filter")
 use_odds_filter = st.sidebar.checkbox("Apply Odds Range Filter", value=False)
 min_odds, max_odds = -1000, 1000  # Default: no filtering
@@ -26,6 +26,31 @@ props_per_game = st.sidebar.number_input(
     "Number of Props per Game", min_value=1, max_value=8, value=3, step=1,
     help="Select how many props to include per game (1-8)."
 )
+
+# Prop Type Selection with Checkboxes
+st.sidebar.subheader("Prop Types to Analyze")
+all_selected = st.sidebar.checkbox("Select All Prop Types", value=True, key="select_all")
+prop_types = []
+if all_selected:
+    prop_types = ["points", "rebounds", "assists", "steals", "blocks"]
+else:
+    if st.sidebar.checkbox("Points", value=False, key="points"):
+        prop_types.append("points")
+    if st.sidebar.checkbox("Rebounds", value=False, key="rebounds"):
+        prop_types.append("rebounds")
+    if st.sidebar.checkbox("Assists", value=False, key="assists"):
+        prop_types.append("assists")
+    if st.sidebar.checkbox("Steals", value=False, key="steals"):
+        prop_types.append("steals")
+    if st.sidebar.checkbox("Blocks", value=False, key="blocks"):
+        prop_types.append("blocks")
+
+# Validate Prop Type Selection
+if not prop_types:
+    st.sidebar.error("⚠️ Please select at least one prop type to analyze.")
+    st.stop()
+
+st.sidebar.write(f"Selected prop types: {', '.join(prop_types)}")
 
 # Fetch Games from balldontlie API for today
 games = fetch_games(current_date)
@@ -78,7 +103,7 @@ else:
 
                 # Analyze Each Game and Select Top Props
                 for selected_game in selected_games:
-                    available_props = fetch_props(selected_game['odds_api_event_id'])
+                    available_props = fetch_props(selected_game['odds_api_event_id'], prop_types)
                     if not available_props:
                         st.warning(f"⚠️ No props available for {selected_game['display']}. Check API key, rate limits, or game availability.")
                         continue
@@ -95,7 +120,7 @@ else:
                         st.info(f"No props available for {selected_game['display']} within odds range {min_odds} to {max_odds}.")
                         continue
 
-                    # Automatically select top N props based on confidence
+                    # Calculate confidence for each prop
                     prop_confidence_list = []
                     for prop, prop_data in filtered_props.items():
                         player_name = prop.split()[0] + " " + prop.split()[1]  # e.g., "Tim Hardaway"
@@ -107,12 +132,22 @@ else:
                             "confidence": confidence_score,
                             "odds": prop_data['odds'],
                             "risk_level": prop_data['risk_level'],
-                            "line_discrepancy": "🔥" if line_discrepancy else ""
+                            "line_discrepancy": "🔥" if line_discrepancy else "",
+                            "player_stat_key": f"{player_name}_{prop_data['prop_type']}"  # e.g., "Tim Hardaway_points"
                         })
 
-                    # Sort by confidence and select top N props
+                    # Sort by confidence
                     prop_confidence_list = sorted(prop_confidence_list, key=lambda x: x['confidence'], reverse=True)
-                    game_selected_props = prop_confidence_list[:min(props_per_game, len(prop_confidence_list))]
+
+                    # Select top N props while avoiding conflicts (e.g., Over and Under for the same player stat)
+                    selected_prop_keys = set()  # Track selected player_stat combinations
+                    game_selected_props = []
+                    for prop_item in prop_confidence_list:
+                        player_stat_key = prop_item['player_stat_key']
+                        if player_stat_key not in selected_prop_keys and len(game_selected_props) < props_per_game:
+                            selected_prop_keys.add(player_stat_key)
+                            game_selected_props.append(prop_item)
+
                     selected_props[selected_game['display']] = [item['prop'] for item in game_selected_props]
                     total_props += len(game_selected_props)
 
