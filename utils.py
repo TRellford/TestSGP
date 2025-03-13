@@ -237,3 +237,4 @@ def get_sharp_money_insights(selected_props):
     for game, props in selected_props.items():
         for prop in props:
             odds_shift = random.uniform(-0.05, 0
+                                       )
