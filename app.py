@@ -1,63 +1,121 @@
 import streamlit as st
-import datetime
-import math
 from utils import (
-    fetch_best_props, fetch_sgp_builder, fetch_sharp_money_trends,
-    get_nba_games
+    fetch_games, fetch_props, calculate_parlay_odds, get_sharp_money_insights,
+    get_player_stats, predict_prop_confidence, detect_line_discrepancies
 )
 
-st.set_page_config(page_title="NBA Betting AI", layout="wide")
+# Streamlit UI Setup
+st.set_page_config(page_title="SGP+ Builder", layout="wide")
+st.title("Same Game Parlay Plus (SGP+)")
 
-# Sidebar Navigation
-st.sidebar.title("🔍 Navigation")
-menu_option = st.sidebar.selectbox("Select a Section:", ["Same Game Parlay", "SGP+"])
+# Sidebar for Odds Filtering
+st.sidebar.subheader("Odds Filter")
+min_odds = st.sidebar.number_input("Min Odds", min_value=-1000, max_value=1000, value=-350, step=10)
+max_odds = st.sidebar.number_input("Max Odds", min_value=-1000, max_value=1000, value=200, step=10)
 
+# Fetch and Display Games using balldontlie API
+games = fetch_games()
 
-# Same Game Parlay (SGP)
-if menu_option == "Same Game Parlay":
-    st.header("🎯 Same Game Parlay (SGP) - One Game Only")
+if games and "display" in games[0]:
+    game_displays = [game["display"] for game in games]
+    selected_displays = st.multiselect(
+        "Select 2-12 Games",
+        game_displays,
+        default=None,
+        help="Choose between 2 and 12 NBA games.",
+        max_selections=12
+    )
+    selected_games = [game for game in games if game["display"] in selected_displays]
 
-    date_option = st.radio("Choose Game Date:", ["Today's Games", "Tomorrow's Games"], key="sgp_date")
-    game_date = datetime.date.today() if date_option == "Today's Games" else datetime.date.today() + datetime.timedelta(days=1)
-    
-    available_games = get_nba_games(game_date)
-    
-    st.write(f"📅 Fetching games for: {game_date.strftime('%Y-%m-%d')}")
-    st.write(f"🎮 Number of games found: {len(available_games)}")
-
-    if available_games:
-        game_labels = [f"{game['home_team']} vs {game['away_team']}" for game in available_games]
-        selected_game_label = st.selectbox("Select a Game:", game_labels, key="sgp_game")
-        selected_game = next(g for g in available_games if f"{g['home_team']} vs {g['away_team']}" == selected_game_label)
-        
-        num_props = st.slider("Number of Props (1-8):", 1, 8, 1, key="sgp_num_props")
-        
-        if st.button("Generate SGP Prediction"):
-            sgp_result = fetch_sgp_builder(selected_game, num_props=num_props)
-            st.write(sgp_result)
-    else:
-        st.warning("🚨 No NBA games found for the selected date.")
-
-# SGP+ (Multi-Game Parlay)
-elif menu_option == "SGP+":
-    st.header("🔥 Multi-Game Parlay (SGP+) - Select 2 to 12 Games")
-    
-    today_games = get_nba_games(datetime.date.today())
-    tomorrow_games = get_nba_games(datetime.date.today() + datetime.timedelta(days=1))
-    all_games = today_games + tomorrow_games
-    game_labels = [f"{game['home_team']} vs {game['away_team']}" for game in all_games]
-    selected_labels = st.multiselect("Select Games (Min: 2, Max: 12):", game_labels)
-    selected_games = [g for g in all_games if f"{g['home_team']} vs {g['away_team']}" in selected_labels]
-    
     if len(selected_games) < 2:
-        st.warning("⚠️ You must select at least 2 games.")
-    elif len(selected_games) > 12:
-        st.warning("⚠️ You cannot select more than 12 games.")
+        st.warning("⚠️ Please select at least 2 games to build an SGP+.")
     else:
-        max_props_per_game = math.floor(24 / len(selected_games))
-        props_per_game = st.slider(f"Choose Props Per Game (Max {max_props_per_game}):", 1, max_props_per_game)
-        
-        if st.button("Generate SGP+ Prediction"):
-            num_props_total = props_per_game * len(selected_games)
-            sgp_plus_result = fetch_sgp_builder(selected_games, num_props=num_props_total, multi_game=True)
-            st.write(sgp_plus_result)
+        total_props = 0
+        selected_props = {}
+        odds_list = []
+        prop_confidence_data = []
+
+        # Prop Selection for Each Game
+        for selected_game in selected_games:
+            with st.expander(f"{selected_game['display']} Props", expanded=False):
+                available_props = fetch_props(selected_game['id'])
+
+                if not available_props:
+                    st.warning(f"⚠️ No props available for {selected_game['display']}.")
+                    continue
+
+                # Filter props by odds range
+                filtered_props = {
+                    prop: data for prop, data in available_props.items()
+                    if min_odds <= data['odds'] <= max_odds
+                }
+
+                if not filtered_props:
+                    st.info(f"No props available for {selected_game['display']} within odds range {min_odds} to {max_odds}.")
+                    continue
+
+                # Select Props (Max 8 per game)
+                selected_props[selected_game['display']] = st.multiselect(
+                    f"Select Props for {selected_game['display']} (1-8)",
+                    list(filtered_props.keys()),
+                    default=None,
+                    max_selections=8,
+                    help="Choose up to 8 props per game."
+                )
+                total_props += len(selected_props[selected_game['display']])
+
+                # Display Props Table with Confidence Scores and Risk Levels
+                if selected_props[selected_game['display']]:
+                    selected_data = []
+                    for prop in selected_props[selected_game['display']]:
+                        prop_data = filtered_props[prop]
+                        # Fetch player stats and predict confidence
+                        player_name = prop.split()[0] + " " + prop.split()[1]  # Simplified parsing
+                        player_stats = get_player_stats(player_name)
+                        confidence_score = predict_prop_confidence(prop, prop_data['odds'], player_stats, selected_game)
+                        line_discrepancy = detect_line_discrepancies(prop_data['odds'], confidence_score)
+                        selected_data.append({
+                            "Prop": prop,
+                            "Odds": prop_data['odds'],
+                            "Confidence": confidence_score,
+                            "Risk Level": prop_data['risk_level'],
+                            "Line Discrepancy": "🔥" if line_discrepancy else ""
+                        })
+                        prop_confidence_data.append({
+                            "prop": prop,
+                            "confidence": confidence_score,
+                            "odds": prop_data['odds']
+                        })
+                    st.table(selected_data)
+                    odds_list.extend([filtered_props[prop]['odds'] for prop in selected_props[selected_game['display']]])
+
+        # Enforce Max 24 Props Across All Games
+        if total_props > 24:
+            st.error("⚠️ You can select a maximum of 24 total props across all games.")
+        elif total_props > 0:
+            # Final Parlay Odds Calculation
+            final_odds = calculate_parlay_odds(odds_list)
+            st.subheader("Final SGP+ Summary")
+            st.write(f"**Total Props Selected**: {total_props}")
+            st.write(f"**Combined Parlay Odds**: {final_odds}")
+
+            # Auto-Generated Parlay Suggestions
+            st.subheader("Auto-Generated Parlay Suggestions")
+            top_confidence_props = sorted(prop_confidence_data, key=lambda x: x['confidence'], reverse=True)[:5]
+            if top_confidence_props:
+                suggestion_data = [
+                    {"Prop": item['prop'], "Odds": item['odds'], "Confidence": item['confidence']}
+                    for item in top_confidence_props
+                ]
+                st.table(suggestion_data)
+            else:
+                st.info("No suggestions available.")
+
+            # Sharp Money Insights
+            st.subheader("Sharp Money Insights")
+            sharp_money_data = get_sharp_money_insights(selected_props)
+            st.table(sharp_money_data)
+        else:
+            st.info("Please select at least one prop to see the parlay odds.")
+else:
+    st.error("⚠️ No games available or issue fetching games. Please try again later.")
