@@ -1,15 +1,18 @@
 import streamlit as st
 from utils import (
-    fetch_games, fetch_props, calculate_parlay_odds, get_sharp_money_insights,
+    fetch_games, fetch_odds_api_events, fetch_props, calculate_parlay_odds, get_sharp_money_insights,
     get_player_stats, predict_prop_confidence, detect_line_discrepancies, american_odds_to_string
 )
-from datetime import date
+from datetime import date, datetime
 
 # Streamlit UI Setup
 st.set_page_config(page_title="SGP+ Builder", layout="wide")
 st.title("Same Game Parlay Plus (SGP+)")
 
-# Sidebar for Odds Filtering and Props Selection
+# Sidebar for Date Selection, Odds Filtering, and Props Selection
+st.sidebar.subheader("Game Date")
+selected_date = st.sidebar.date_input("Select Date for Games", value=date(2024, 1, 15))  # Known date with NBA games
+
 st.sidebar.subheader("Odds Filter")
 use_odds_filter = st.sidebar.checkbox("Apply Odds Range Filter", value=False)
 min_odds, max_odds = -1000, 1000  # Default: no filtering
@@ -23,11 +26,30 @@ props_per_game = st.sidebar.number_input(
     help="Select how many props to include per game (1-8)."
 )
 
-# Fetch and Display Games using balldontlie API
-games = fetch_games(date.today())
+# Fetch Games from balldontlie API
+games = fetch_games(selected_date)
 
-if games and "display" in games[0]:
-    game_displays = [game["display"] for game in games]
+# Fetch Events from The Odds API to map game IDs
+odds_api_events = fetch_odds_api_events(selected_date)
+
+# Map balldontlie games to The Odds API events
+mapped_games = []
+for game in games:
+    game_display = game["display"]
+    home_team = game["home_team"]
+    away_team = game["away_team"]
+    matching_event = next(
+        (event for event in odds_api_events if event["home_team"] == home_team and event["away_team"] == away_team),
+        None
+    )
+    if matching_event:
+        game["odds_api_event_id"] = matching_event["id"]
+        mapped_games.append(game)
+    else:
+        st.warning(f"⚠️ No matching event found in The Odds API for {game_display}.")
+
+if mapped_games:
+    game_displays = [game["display"] for game in mapped_games]
     selected_displays = st.multiselect(
         "Select 2-12 Games",
         game_displays,
@@ -35,7 +57,7 @@ if games and "display" in games[0]:
         help="Choose between 2 and 12 NBA games.",
         max_selections=12
     )
-    selected_games = [game for game in games if game["display"] in selected_displays]
+    selected_games = [game for game in mapped_games if game["display"] in selected_displays]
 
     if len(selected_games) < 2:
         st.warning("⚠️ Please select at least 2 games to build an SGP+.")
@@ -47,10 +69,10 @@ if games and "display" in games[0]:
 
         # Analyze Each Game and Select Top Props
         for selected_game in selected_games:
-            available_props = fetch_props(selected_game['id'])
+            available_props = fetch_props(selected_game['odds_api_event_id'])
 
             if not available_props:
-                st.warning(f"⚠️ No props available for {selected_game['display']}.")
+                st.warning(f"⚠️ No props available for {selected_game['display']}. Check API key, rate limits, or game availability.")
                 continue
 
             # Filter props by odds range if enabled
