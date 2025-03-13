@@ -1,18 +1,23 @@
 import requests
 import numpy as np
-from datetime import date, datetime
+from datetime import date
 import streamlit as st
 from scipy.stats import poisson
-import random
-import re
 
 # Constants
-SEASON = "2025"  # Adjust for current NBA season
 BALL_DONT_LIE_API_URL = "https://api.balldontlie.io/v1"
 ODDS_API_URL = "https://api.the-odds-api.com/v4"
 
+def get_current_season_year():
+    """Determine the current NBA season year based on today's date."""
+    today = date.today()
+    if today.month >= 10:  # October or later: current year
+        return str(today.year)
+    else:  # Before October: previous year
+        return str(today.year - 1)
+
 def fetch_games(date):
-    """Fetch NBA games from Balldontlie API, modified to support 2-12 game selection."""
+    """Fetch NBA games from Balldontlie API for a given date."""
     try:
         url = f"{BALL_DONT_LIE_API_URL}/games"
         headers = {"Authorization": st.secrets["balldontlie_api_key"]}
@@ -30,7 +35,6 @@ def fetch_games(date):
         games_data = response.json().get("data", [])
 
         if not games_data:
-            st.warning(f"⚠️ No NBA games found for {date.strftime('%Y-%m-%d')}.")
             return []
 
         formatted_games = [
@@ -62,7 +66,6 @@ def fetch_odds_api_events(date):
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
-        st.write(f"Debug: The Odds API events response for date {date}: {data}")  # Debug log
         return data if isinstance(data, list) else []
     except requests.exceptions.RequestException as e:
         st.error(f"❌ Error fetching events from The Odds API: {e}")
@@ -71,7 +74,7 @@ def fetch_odds_api_events(date):
         return []
 
 def fetch_props(event_id):
-    """Fetch player props and alternate lines from The Odds API with detailed logging."""
+    """Fetch player props from The Odds API."""
     api_key = st.secrets.get("odds_api_key", None)
     if not api_key:
         st.error("❌ The Odds API key is missing in secrets. Please add 'odds_api_key' to your Streamlit secrets.")
@@ -80,27 +83,26 @@ def fetch_props(event_id):
     url = f"{ODDS_API_URL}/sports/basketball_nba/events/{event_id}/odds?regions=us&markets=player_points,player_rebounds,player_assists&oddsFormat=american&apiKey={api_key}"
     
     try:
-        st.write(f"Debug: Fetching props with URL: {url}")  # Log the URL
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
-        st.write(f"Debug: The Odds API response for event {event_id}: {data}")  # Debug log
 
         props = {}
         if 'bookmakers' in data and data['bookmakers']:
             for bookmaker in data['bookmakers'][:1]:  # Use first bookmaker for simplicity
                 for market in bookmaker['markets']:
+                    prop_type = market['key'].replace('player_', '')  # e.g., 'points'
                     for outcome in market['outcomes']:
-                        prop_name = f"{outcome['description']} {outcome['name']}"
-                        odds = outcome['price']
-                        props[prop_name] = {
-                            'odds': odds,
-                            'confidence': get_initial_confidence(odds),
-                            'risk_level': get_risk_level(odds)
-                        }
-            st.write(f"Debug: Props dictionary for event {event_id}: {props}")  # Add debug
-        else:
-            st.warning(f"Debug: No bookmakers or markets found for event {event_id}.")
+                        if 'point' in outcome:
+                            prop_name = f"{outcome['description']} {outcome['name']} {outcome['point']} {prop_type}"
+                            odds = outcome['price']
+                            props[prop_name] = {
+                                'odds': odds,
+                                'confidence': get_initial_confidence(odds),
+                                'risk_level': get_risk_level(odds),
+                                'prop_type': prop_type,
+                                'point': outcome['point']
+                            }
         return props
 
     except requests.exceptions.RequestException as e:
@@ -109,8 +111,8 @@ def fetch_props(event_id):
             st.error("⚠️ The Odds API rate limit exceeded. Check your usage at https://the-odds-api.com/.")
         return {}
 
-def get_player_stats(player_name):
-    """Fetch player season stats from balldontlie API."""
+def get_player_stats(player_name, season):
+    """Fetch player season stats from balldontlie API for the given season."""
     url = f"{BALL_DONT_LIE_API_URL}/players?search={player_name}"
     try:
         response = requests.get(url, headers={"Authorization": st.secrets["balldontlie_api_key"]})
@@ -120,13 +122,13 @@ def get_player_stats(player_name):
             return None
         player_id = players[0]['id']
         
-        stats_url = f"{BALL_DONT_LIE_API_URL}/season_averages?season={SEASON}&player_ids[]={player_id}"
+        stats_url = f"{BALL_DONT_LIE_API_URL}/season_averages?season={season}&player_ids[]={player_id}"
         stats_response = requests.get(stats_url, headers={"Authorization": st.secrets["balldontlie_api_key"]})
         stats_response.raise_for_status()
         stats_data = stats_response.json()['data']
         return stats_data[0] if stats_data else None
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching player stats for {player_name}: {e}")
+        st.error(f"Error fetching player stats for {player_name}: {e}")
         return None
 
 def get_initial_confidence(odds):
@@ -162,124 +164,45 @@ def american_odds_to_string(odds):
     return str(int(odds))
 
 def calculate_parlay_odds(odds_list):
-    """Calculate combined parlay odds from a list of American odds and return in American format."""
+    """Calculate combined parlay odds from a list of American odds."""
     decimal_odds = [1 + (abs(odds) / 100) if odds < 0 else (odds / 100) + 1 for odds in odds_list]
     final_decimal_odds = np.prod(decimal_odds)
-    # Convert back to American odds
     if final_decimal_odds > 2:
         american_odds = (final_decimal_odds - 1) * 100
     else:
         american_odds = -100 / (final_decimal_odds - 1)
     return round(american_odds, 0)
 
-def bayesian_update(prior, likelihood, evidence):
-    """Bayesian Inference for updating confidence scores."""
-    posterior = (likelihood * prior) / evidence
-    return min(max(posterior, 0.1), 0.9)  # Bound between 0.1 and 0.9
-
-def xgboost_predict(player_stats, prop_value, prop_type):
-    """Simplified XGBoost prediction (simulated for MVP)."""
-    if not player_stats:
-        return 0.5
-    stat_key = {'points': 'pts', 'rebounds': 'reb', 'assists': 'ast'}[prop_type]
-    avg = player_stats.get(stat_key, 0)
-    # Simulate XGBoost: higher avg relative to prop value = higher confidence
-    return min(0.9, max(0.1, avg / prop_value if prop_value > 0 else 0.5))
-
-def monte_carlo_simulation(player_stats, prop_value, prop_type, n_simulations=10000):
-    """Monte Carlo simulation for prop hit rate."""
-    if not player_stats:
-        return 0.5
-    stat_key = {'points': 'pts', 'rebounds': 'reb', 'assists': 'ast'}[prop_type]
-    avg = player_stats.get(stat_key, 0)
-    simulations = np.random.normal(avg, avg * 0.2, n_simulations)  # Assume 20% variance
-    hit_rate = np.mean(simulations > prop_value)
-    return hit_rate
-
-def poisson_score_prediction(team_avg, opponent_defense):
-    """Poisson distribution for score prediction."""
-    adjusted_avg = team_avg * (1 - opponent_defense * 0.1)  # Simplified adjustment
-    return poisson.pmf(range(50, 150), adjusted_avg)
-
-def linear_regression_adjustment(player_stats, game_context):
-    """Linear regression for adjustments (simulated for MVP)."""
-    if not player_stats:
-        return 1.0
-    pace_factor = game_context.get('pace', 1.0)
-    injury_factor = 0.8 if game_context.get('injury', False) else 1.0
-    return pace_factor * injury_factor
+def predict_prop_confidence(prop, prop_data, player_stats, game_context):
+    """Predict confidence score using simplified models."""
+    prop_type = prop_data['prop_type']
+    prop_value = prop_data['point']
+    book_odds = prop_data['odds']
+    
+    # Initial confidence based on odds
+    confidence = get_initial_confidence(book_odds)
+    
+    # Adjust confidence with player stats if available
+    if player_stats:
+        stat_key = {'points': 'pts', 'rebounds': 'reb', 'assists': 'ast'}[prop_type]
+        avg = player_stats.get(stat_key, 0)
+        if prop_value > 0:
+            adjustment = min(0.9, max(0.1, avg / prop_value))
+            confidence = (confidence + adjustment) / 2  # Average initial and stat-based confidence
+    
+    return round(confidence, 2)
 
 def detect_line_discrepancies(book_odds, model_confidence):
-    """AI-based line discrepancy detector."""
+    """Detect discrepancies between book odds and model confidence."""
     implied_odds = 1 / (1 + (abs(book_odds) / 100) if book_odds < 0 else (book_odds / 100) + 1)
-    model_odds = model_confidence
-    return model_odds > implied_odds * 1.1  # Flag if model odds are 10% better
-
-def predict_prop_confidence(prop, book_odds, player_stats, game_context):
-    """Predict confidence score using advanced models with robust parsing."""
-    # Split the prop string into parts
-    prop_parts = prop.split()
-    
-    # Extract prop type (last word, e.g., "Points", "Rebounds", "Assists")
-    prop_type = prop_parts[-1].lower()
-    if prop_type not in ['points', 'rebounds', 'assists']:
-        prop_type = 'unknown'  # Handle unexpected prop types
-    
-    # Find the numeric value in the prop string (e.g., "20.5")
-    prop_value = None
-    for part in prop_parts:
-        # Look for a number (integer or decimal)
-        match = re.search(r'^\d+(\.\d+)?$', part)
-        if match:
-            prop_value = float(match.group())
-            break
-    
-    if prop_value is None:
-        # If no numeric value is found, use a default or skip advanced prediction
-        st.warning(f"Debug: No numeric value found in prop '{prop}'. Using default confidence.")
-        return get_initial_confidence(book_odds)  # Fallback to initial confidence
-
-    # Initial confidence (prior)
-    prior_confidence = get_initial_confidence(book_odds)
-    
-    # Bayesian Inference (simulated live update)
-    likelihood = 0.7  # Placeholder for live data
-    evidence = 0.9  # Placeholder for normalization
-    bayesian_confidence = bayesian_update(prior_confidence, likelihood, evidence)
-    
-    # XGBoost Prediction
-    xgboost_confidence = xgboost_predict(player_stats, prop_value, prop_type)
-    
-    # Monte Carlo Simulation
-    monte_carlo_confidence = monte_carlo_simulation(player_stats, prop_value, prop_type)
-    
-    # Linear Regression Adjustment
-    adjustment_factor = linear_regression_adjustment(player_stats, game_context)
-    
-    # Combine scores (weighted average)
-    final_confidence = (bayesian_confidence * 0.2 + xgboost_confidence * 0.3 + 
-                        monte_carlo_confidence * 0.3) * adjustment_factor
-    
-    return round(final_confidence, 2)
+    return model_confidence > implied_odds * 1.1  # Flag if model confidence is 10% higher
 
 def get_sharp_money_insights(selected_props):
-    """Track sharp money using odds movement from The Odds API."""
-    api_key = st.secrets["odds_api_key"]
+    """Simulate sharp money insights (placeholder)."""
     insights = {}
     for game, props in selected_props.items():
         for prop in props:
-            # Simulate fetching odds movement (requires historical odds or multiple calls)
-            url = f"{ODDS_API_URL}/sports/basketball_nba/odds-history?regions=us&markets=player_points,player_rebounds,player_assists&oddsFormat=american&apiKey={api_key}"
-            try:
-                response = requests.get(url)
-                response.raise_for_status()
-                data = response.json()
-                # Simplified: Check if odds shortened significantly
-                initial_odds = data.get('initial_odds', {}).get(prop, book_odds + 20)
-                current_odds = book_odds
-                odds_shift = (initial_odds - current_odds) / abs(initial_odds)
-                sharp_indicator = "🔥 Sharp Money" if odds_shift > 0.1 else "Public Money"
-                insights[prop] = {"Sharp Indicator": sharp_indicator, "Odds Shift %": round(odds_shift * 100, 2)}
-            except requests.exceptions.RequestException:
-                insights[prop] = {"Sharp Indicator": "Data Unavailable", "Odds Shift %": 0}
+            odds_shift = random.uniform(-0.05, 0.15)  # Simulated odds movement
+            sharp_indicator = "🔥 Sharp Money" if odds_shift > 0.1 else "Public Money"
+            insights[prop] = {"Sharp Indicator": sharp_indicator, "Odds Shift %": round(odds_shift * 100, 2)}
     return insights
