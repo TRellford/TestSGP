@@ -164,44 +164,4 @@ else:
                         "num_props": len(game_selected_props)
                     })
 
-                # Enforce Max 24 Props Across All Games
-                if total_props > 24:
-                    st.error("⚠️ You can select a maximum of 24 total props across all games.")
-                elif total_props > 0:
-                    # Display Suggested Props per Game in SGP Style
-                    for game_data in game_prop_data:
-                        game = game_data['game']
-                        props = game_data['props']
-                        combined_odds = game_data['combined_odds']
-                        num_props = game_data['num_props']
-
-                        st.markdown(f"**SGP {game['home_team']} @ {game['away_team']}** {american_odds_to_string(combined_odds)}")
-                        st.write(f"{num_props} SELECTIONS  6:10PM CT")  # Placeholder time
-                        for prop in props:
-                            st.markdown(f"- {prop['prop']}")
-                        st.markdown("---")
-
-                    # Final SGP+ Summary
-                    final_odds = calculate_parlay_odds(odds_list)
-                    st.subheader("Final SGP+ Summary")
-                    st.write(f"**{total_props} Leg Same Game Parlay+** {american_odds_to_string(final_odds)}")
-                    st.write(f"Includes: {len(selected_games)} Games")
-
-                    # Wager and Payout Calculation
-                    wager = st.number_input("Wager ($)", min_value=0.0, value=10.0, step=0.5)
-                    if final_odds > 0:
-                        payout = wager * (final_odds / 100)
-                    else:
-                        payout = wager / (abs(final_odds) / 100)
-                    st.write(f"To Win: ${round(payout, 2)}")
-
-                    # Odds Movement Notification (Placeholder)
-                    st.info("Odds have changed for some of your selections")
-                    st.checkbox("Accept odds movement", value=False)
-
-                    # Sharp Money Insights
-                    st.subheader("Sharp Money Insights")
-                    sharp_money_data = get_sharp_money_insights(selected_props)
-                    st.table(sharp_money_data)
-                else:
-                    st.info("No props available for the selected games.")
+                # Enforce Max 24 Props Across All
