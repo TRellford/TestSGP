@@ -48,16 +48,22 @@ def fetch_games(date):
         return []
 
 def fetch_props(game_id):
-    """Fetch player props and alternate lines from The Odds API."""
-    api_key = st.secrets["odds_api_key"]
+    """Fetch player props and alternate lines from The Odds API with detailed logging."""
+    api_key = st.secrets.get("odds_api_key", None)
+    if not api_key:
+        st.error("❌ The Odds API key is missing in secrets. Please add 'odds_api_key' to your Streamlit secrets.")
+        return {}
+
     url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/events/{game_id}/odds?regions=us&markets=player_points,player_rebounds,player_assists&oddsFormat=american&apiKey={api_key}"
     
     try:
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
+        st.write(f"Debug: The Odds API response for game {game_id}: {data}")  # Debug log
+
         props = {}
-        if 'bookmakers' in data:
+        if 'bookmakers' in data and data['bookmakers']:
             for bookmaker in data['bookmakers'][:1]:  # Use first bookmaker for simplicity
                 for market in bookmaker['markets']:
                     for outcome in market['outcomes']:
@@ -68,9 +74,14 @@ def fetch_props(game_id):
                             'confidence': get_initial_confidence(odds),
                             'risk_level': get_risk_level(odds)
                         }
+        else:
+            st.warning(f"Debug: No bookmakers or markets found for game {game_id}.")
         return props
+
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching props for game {game_id}: {e}")
+        st.error(f"❌ Error fetching props for game {game_id}: {e}")
+        if "429" in str(e):
+            st.error("⚠️ The Odds API rate limit exceeded. Check your usage at https://the-odds-api.com/.")
         return {}
 
 def get_player_stats(player_name):
