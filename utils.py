@@ -70,3 +70,49 @@ def fetch_sgp_builder(selected_game, num_props=1, multi_game=False):
         "selected_props": sorted_props,
         "combined_odds": american_odds
     }
+
+def fetch_sharp_money_trends(selected_games):
+    """Fetch sharp money trends for selected games from The Odds API."""
+    response = requests.get(
+        f"{ODDS_API_URL}",
+        params={"apiKey": ODDS_API_KEY, "regions": "us", "markets": "h2h"}
+    )
+
+    if response.status_code != 200:
+        st.error(f"❌ Error fetching sharp money trends: {response.status_code}")
+        return {}
+
+    odds_data = response.json()
+    trends = {}
+
+    for game in selected_games:
+        game_key = f"{game['home_team']} vs {game['away_team']}"
+        event = next(
+            (e for e in odds_data if e['home_team'] == game['home_team'] and e['away_team'] == game['away_team']),
+            None
+        )
+
+        if not event or not event.get("bookmakers"):
+            trends[game_key] = "No sharp money data available."
+            continue
+
+        fanduel = next((b for b in event["bookmakers"] if b["key"] == "fanduel"), None)
+
+        if not fanduel or not fanduel["markets"]:
+            trends[game_key] = "No FanDuel betting data available."
+            continue
+
+        h2h_market = fanduel["markets"][0]
+
+        # Extracting odds for sharp money detection
+        home_odds = next(o["price"] for o in h2h_market["outcomes"] if o["name"] == game["home_team"])
+        away_odds = next(o["price"] for o in h2h_market["outcomes"] if o["name"] == game["away_team"])
+
+        if home_odds < away_odds:
+            trends[game_key] = f"🔍 **Sharp money on {game['home_team']} ({home_odds})**"
+        elif away_odds < home_odds:
+            trends[game_key] = f"🔍 **Sharp money on {game['away_team']} ({away_odds})**"
+        else:
+            trends[game_key] = "No significant sharp money movement detected."
+
+    return trends
