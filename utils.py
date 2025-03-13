@@ -100,9 +100,9 @@ def fetch_props(event_id, prop_types=None):
                 for market in bookmaker['markets']:
                     prop_type = market['key'].replace('player_', '')  # e.g., 'points', 'rebounds', 'assists', 'steals', 'blocks'
                     # Only process if prop_type is in the selected list or all are selected
-                    if not prop_types or prop_type in prop_types:
+                    if prop_types is None or prop_type in prop_types:
                         for outcome in market['outcomes']:
-                            if 'point' in outcome:
+                            if 'point' in outcome and outcome.get('name') in ['Over', 'Under']:
                                 prop_name = f"{outcome['description']} {outcome['name']} {outcome['point']} {prop_type}"
                                 odds = outcome['price']
                                 props[prop_name] = {
@@ -205,6 +205,8 @@ def american_odds_to_string(odds):
 
 def calculate_parlay_odds(odds_list):
     """Calculate combined parlay odds from a list of American odds."""
+    if not odds_list:
+        return 0
     decimal_odds = [1 + (abs(odds) / 100) if odds < 0 else (odds / 100) + 1 for odds in odds_list]
     final_decimal_odds = np.prod(decimal_odds)
     if final_decimal_odds > 2:
@@ -216,14 +218,14 @@ def calculate_parlay_odds(odds_list):
 def predict_prop_confidence(prop, prop_data, player_stats, game_context):
     """Predict confidence score using simplified models for all prop types."""
     prop_type = prop_data['prop_type']  # e.g., 'points', 'rebounds', 'assists', 'steals', 'blocks'
-    prop_value = prop_data['point']
+    prop_value = prop_data.get('point', 0)  # Default to 0 if missing
     book_odds = prop_data['odds']
     
     # Initial confidence based on odds
     confidence = get_initial_confidence(book_odds)
     
     # Adjust confidence with player stats if available
-    if player_stats:
+    if player_stats and prop_value > 0:
         stat_key = {
             'points': 'pts',
             'rebounds': 'reb',
@@ -232,14 +234,15 @@ def predict_prop_confidence(prop, prop_data, player_stats, game_context):
             'blocks': 'blk'
         }.get(prop_type, 'pts')  # Default to 'pts' if prop_type is unexpected
         avg = player_stats.get(stat_key, 0)
-        if prop_value > 0:
-            adjustment = min(0.9, max(0.1, avg / prop_value))
-            confidence = (confidence + adjustment) / 2  # Average initial and stat-based confidence
+        adjustment = min(0.9, max(0.1, avg / prop_value)) if avg > 0 else 0.5
+        confidence = (confidence + adjustment) / 2  # Average initial and stat-based confidence
     
     return round(confidence, 2)
 
 def detect_line_discrepancies(book_odds, model_confidence):
     """Detect discrepancies between book odds and model confidence."""
+    if book_odds == 0:
+        return False
     implied_odds = 1 / (1 + (abs(book_odds) / 100) if book_odds < 0 else (book_odds / 100) + 1)
     return model_confidence > implied_odds * 1.1  # Flag if model confidence is 10% higher
 
