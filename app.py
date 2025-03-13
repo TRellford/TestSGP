@@ -11,8 +11,11 @@ st.title("Same Game Parlay Plus (SGP+)")
 
 # Sidebar for Odds Filtering and Prop Suggestions
 st.sidebar.subheader("Odds Filter")
-min_odds = st.sidebar.number_input("Min Odds", min_value=-1000, max_value=1000, value=-350, step=10)
-max_odds = st.sidebar.number_input("Max Odds", min_value=-1000, max_value=1000, value=200, step=10)
+use_odds_filter = st.sidebar.checkbox("Apply Odds Range Filter", value=False)
+min_odds, max_odds = -1000, 1000  # Default: no filtering
+if use_odds_filter:
+    min_odds = st.sidebar.number_input("Min Odds", min_value=-1000, max_value=1000, value=-350, step=10)
+    max_odds = st.sidebar.number_input("Max Odds", min_value=-1000, max_value=1000, value=200, step=10)
 
 st.sidebar.subheader("Prop Suggestions")
 props_per_game = st.sidebar.number_input(
@@ -40,107 +43,103 @@ if games and "display" in games[0]:
         total_props = 0
         selected_props = {}
         odds_list = []
-        prop_confidence_data = []
+        game_prop_data = []
 
-        # Prop Selection for Each Game
+        # Analyze Each Game and Select Top Props
         for selected_game in selected_games:
-            with st.expander(f"{selected_game['display']} Props", expanded=False):
-                available_props = fetch_props(selected_game['id'])
+            available_props = fetch_props(selected_game['id'])
 
-                if not available_props:
-                    st.warning(f"⚠️ No props available for {selected_game['display']}.")
-                    continue
+            if not available_props:
+                st.warning(f"⚠️ No props available for {selected_game['display']}.")
+                continue
 
-                # Filter props by odds range
+            # Filter props by odds range if enabled
+            filtered_props = available_props
+            if use_odds_filter:
                 filtered_props = {
                     prop: data for prop, data in available_props.items()
                     if min_odds <= data['odds'] <= max_odds
                 }
 
-                if not filtered_props:
-                    st.info(f"No props available for {selected_game['display']} within odds range {min_odds} to {max_odds}.")
-                    continue
+            if not filtered_props:
+                st.info(f"No props available for {selected_game['display']} within odds range {min_odds} to {max_odds}.")
+                continue
 
-                # Select Props (Max 8 per game)
-                selected_props[selected_game['display']] = st.multiselect(
-                    f"Select Props for {selected_game['display']} (1-8)",
-                    list(filtered_props.keys()),
-                    default=None,
-                    max_selections=8,
-                    help="Choose up to 8 props per game."
-                )
-                total_props += len(selected_props[selected_game['display']])
+            # Automatically select top N props based on confidence
+            prop_confidence_list = []
+            for prop in filtered_props.keys():
+                prop_data = filtered_props[prop]
+                player_name = prop.split()[0] + " " + prop.split()[1]  # Simplified parsing
+                player_stats = get_player_stats(player_name)
+                confidence_score = predict_prop_confidence(prop, prop_data['odds'], player_stats, selected_game)
+                line_discrepancy = detect_line_discrepancies(prop_data['odds'], confidence_score)
+                prop_confidence_list.append({
+                    "prop": prop,
+                    "confidence": confidence_score,
+                    "odds": prop_data['odds'],
+                    "risk_level": prop_data['risk_level'],
+                    "line_discrepancy": "🔥" if line_discrepancy else ""
+                })
 
-                # Display Props Table with Confidence Scores and Risk Levels
-                if selected_props[selected_game['display']]:
-                    selected_data = []
-                    game_prop_confidence = []
-                    for prop in filtered_props.keys():
-                        prop_data = filtered_props[prop]
-                        # Fetch player stats and predict confidence
-                        player_name = prop.split()[0] + " " + prop.split()[1]  # Simplified parsing
-                        player_stats = get_player_stats(player_name)
-                        confidence_score = predict_prop_confidence(prop, prop_data['odds'], player_stats, selected_game)
-                        line_discrepancy = detect_line_discrepancies(prop_data['odds'], confidence_score)
-                        prop_entry = {
-                            "Prop": prop,
-                            "Odds": american_odds_to_string(prop_data['odds']),
-                            "Confidence": confidence_score,
-                            "Risk Level": prop_data['risk_level'],
-                            "Line Discrepancy": "🔥" if line_discrepancy else ""
-                        }
-                        if prop in selected_props[selected_game['display']]:
-                            selected_data.append(prop_entry)
-                        game_prop_confidence.append({
-                            "prop": prop,
-                            "confidence": confidence_score,
-                            "odds": prop_data['odds']
-                        })
-                    st.table(selected_data)
-                    odds_list.extend([filtered_props[prop]['odds'] for prop in selected_props[selected_game['display']]])
+            # Sort by confidence and select top N props
+            prop_confidence_list = sorted(prop_confidence_list, key=lambda x: x['confidence'], reverse=True)
+            game_selected_props = prop_confidence_list[:min(props_per_game, len(prop_confidence_list))]
+            selected_props[selected_game['display']] = [item['prop'] for item in game_selected_props]
+            total_props += len(game_selected_props)
 
-                    # Store prop confidence data for suggestions
-                    prop_confidence_data.append({
-                        "game": selected_game['display'],
-                        "props": game_prop_confidence
-                    })
+            # Calculate combined odds for this game
+            game_odds = [item['odds'] for item in game_selected_props]
+            game_combined_odds = calculate_parlay_odds(game_odds) if game_odds else 0
+            odds_list.extend(game_odds)
+
+            # Store data for display
+            game_prop_data.append({
+                "game": selected_game,
+                "props": game_selected_props,
+                "combined_odds": game_combined_odds,
+                "num_props": len(game_selected_props)
+            })
 
         # Enforce Max 24 Props Across All Games
         if total_props > 24:
             st.error("⚠️ You can select a maximum of 24 total props across all games.")
         elif total_props > 0:
-            # Final Parlay Odds Calculation
+            # Display Suggested Props per Game in SGP Style
+            for game_data in game_prop_data:
+                game = game_data['game']
+                props = game_data['props']
+                combined_odds = game_data['combined_odds']
+                num_props = game_data['num_props']
+
+                st.markdown(f"**SGP {game['home_team']} @ {game['away_team']}** {american_odds_to_string(combined_odds)}")
+                st.write(f"{num_props} SELECTIONS  6:10PM CT")  # Placeholder time
+                for prop in props:
+                    st.markdown(f"- {prop['prop']}")
+                st.markdown("---")
+
+            # Final SGP+ Summary
             final_odds = calculate_parlay_odds(odds_list)
             st.subheader("Final SGP+ Summary")
-            st.write(f"**Total Props Selected**: {total_props}")
-            st.write(f"**Combined Parlay Odds**: {american_odds_to_string(final_odds)}")
+            st.write(f"**{total_props} Leg Same Game Parlay+** {american_odds_to_string(final_odds)}")
+            st.write(f"Includes: {len(selected_games)} Games")
 
-            # Auto-Generated Parlay Suggestions
-            st.subheader("Auto-Generated Parlay Suggestions")
-            suggested_props = []
-            total_suggested = 0
-            for game_data in prop_confidence_data:
-                game_props = sorted(game_data['props'], key=lambda x: x['confidence'], reverse=True)
-                game_suggestions = game_props[:min(props_per_game, len(game_props))]
-                for suggestion in game_suggestions:
-                    if total_suggested < 24:  # Respect overall limit
-                        suggested_props.append({
-                            "Game": game_data['game'],
-                            "Prop": suggestion['prop'],
-                            "Odds": american_odds_to_string(suggestion['odds']),
-                            "Confidence": suggestion['confidence']
-                        })
-                        total_suggested += 1
-            if suggested_props:
-                st.table(suggested_props)
+            # Wager and Payout Calculation
+            wager = st.number_input("Wager ($)", min_value=0.0, value=10.0, step=0.5)
+            if final_odds > 0:
+                payout = wager * (final_odds / 100)
             else:
-                st.info("No suggestions available.")
+                payout = wager / (abs(final_odds) / 100)
+            st.write(f"To Win: ${round(payout, 2)}")
+
+            # Odds Movement Notification (Placeholder)
+            st.info("Odds have changed for some of your selections")
+            st.checkbox("Accept odds movement", value=False)
 
             # Sharp Money Insights
             st.subheader("Sharp Money Insights")
             sharp_money_data = get_sharp_money_insights(selected_props)
             st.table(sharp_money_data)
         else:
-            st.info("Please select at least one prop to see the parlay odds.")
+            st.info("No props available for the selected games.")
 else:
     st.error("⚠️ No games available or issue fetching games. Please try again later.")
