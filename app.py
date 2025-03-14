@@ -37,8 +37,8 @@ if menu_option == "Same Game Parlay":
         ]
         risk_options = [f"{level} :large_{color}_circle:" for level, color, _ in risk_levels]
         risk_index = st.selectbox("Select Risk Level:", risk_options, key="sgp_risk_level")
-        selected_risk = next((r for r, c, _ in risk_levels if f"{r} :large_{c}_circle:" == risk_index), risk_levels[0])
-        risk_level, color, (min_odds, max_odds) = selected_risk
+        selected_risk = next(((r, c, o) for r, c, o in risk_levels if f"{r} :large_{c}_circle:" == risk_index), risk_levels[0])
+        risk_level, color, (min_odds, max_odds) = selected_risk  # Correct unpacking        risk_level, color, (min_odds, max_odds) = selected_risk
 
         # Toggle: Choose Between Confidence Score or Odds Range
         filter_type = st.radio("Filter by:", ["Confidence Score", "Odds Range"], key="filter_type")
