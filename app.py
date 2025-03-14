@@ -35,7 +35,7 @@ if menu_option == "Same Game Parlay":
             ("High Risk", "🟠", (+101, +250)),
             ("Very High Risk", "🔴", (+251, float('inf')))
         ]
-        risk_options = [f"{level} :{color}:" for level, color, _ in risk_levels]
+        risk_options = [f"{level} = {color}" for level, color, _ in risk_levels]
         risk_index = st.selectbox("Select Risk Level:", risk_options, key="sgp_risk_level")
         selected_risk = next(((r, c, o) for r, c, o in risk_levels if f"{r} :large_{c}_circle:" == risk_index), risk_levels[0])
         risk_level, color, (min_odds, max_odds) = selected_risk  # Correct unpacking        risk_level, color, (min_odds, max_odds) = selected_risk
