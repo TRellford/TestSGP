@@ -35,20 +35,27 @@ def fetch_games(date, max_retries=3, initial_delay=2):
     retries = 0
     while retries < max_retries:
         try:
+            # Add a small delay to avoid rate limits
+            time.sleep(initial_delay)
+            
             st.write(f"Fetching games for date: {date.strftime('%Y-%m-%d')} (Attempt {retries + 1}/{max_retries})")
             response = requests.get(url, headers=headers, params=params, timeout=10)
-            print(f"Request URL: {response.url}")  # Debug: Log the exact URL
-            print(f"Response Status Code: {response.status_code}")  # Debug: Log status code
-            print(f"Raw Response: {response.text}")  # Debug: Log raw response
+            
+            # Log the request and response details
+            print(f"Request URL: {response.url}")
+            print(f"Request Headers: {headers}")
+            print(f"Response Status Code: {response.status_code}")
+            print(f"Raw Response: {response.text}")
 
             response.raise_for_status()  # Raises an HTTPError for bad responses
 
             games_data = response.json().get("data", [])
-            print(f"Games Data: {games_data}")  # Debug: Log parsed games data
+            print(f"Parsed Games Data: {games_data}")
 
             if not games_data:
-                st.warning(f"No games found for {date.strftime('%Y-%m-%d')}. This could be due to no scheduled games, a data delay, or API limitations. Trying a fallback date (2025-03-11)...")
-                # Fallback to a known date with games (e.g., March 11, 2025, based on web data)
+                st.warning(f"No games found for {date.strftime('%Y-%m-%d')}. This could be due to no scheduled games, a data delay, or API limitations.")
+                # Fallback to a known date with games (e.g., March 11, 2025)
+                st.write("Trying a fallback date (2025-03-11)...")
                 fallback_date = date(2025, 3, 11)
                 params = {"dates[]": fallback_date.strftime("%Y-%m-%d")}
                 response = requests.get(url, headers=headers, params=params, timeout=10)
@@ -58,7 +65,7 @@ def fetch_games(date, max_retries=3, initial_delay=2):
                 response.raise_for_status()
                 games_data = response.json().get("data", [])
                 if not games_data:
-                    st.warning("No games found even on fallback date. Check API availability.")
+                    st.warning("No games found even on fallback date. The API might be down or your key might be invalid.")
                     return []
                 else:
                     st.write(f"Found {len(games_data)} games on fallback date {fallback_date.strftime('%Y-%m-%d')}")
