@@ -70,7 +70,7 @@ def get_event_id(selected_game):
 
 # Fetch Player Props for a Given Game
 def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, confidence_level=None):
-    """Fetch player props for a Same Game Parlay (SGP) using the correct event ID endpoint."""
+    """Fetch player props for a Same Game Parlay (SGP), including alternative lines."""
 
     event_id = get_event_id(selected_game)
     if not event_id:
@@ -82,7 +82,7 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
             params={
                 "apiKey": st.secrets["odds_api_key"],
                 "regions": "us",
-                "markets": "player_points,player_assists,player_rebounds",
+                "markets": "player_points,player_assists,player_rebounds,player_alt_points,player_alt_rebounds,player_alt_assists",
                 "bookmakers": "fanduel"
             }
         )
@@ -103,6 +103,9 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
                 price = outcome["price"]
                 player_name = outcome["name"]
                 prop_type = market["key"].replace("player_", "").capitalize()
+
+                # Identify if it's an alternative line
+                is_alt = "alt" in market["key"]
 
                 # Convert sportsbook odds to implied probability
                 sportsbook_implied_prob = 1 / (1 + (price / 100 if price > 0 else 100 / abs(price)))
@@ -132,13 +135,14 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
                     "implied_prob": sportsbook_implied_prob,
                     "ai_prob": ai_probability,
                     "confidence_boost": confidence_boost,
-                    "betting_edge": betting_edge
+                    "betting_edge": betting_edge,
+                    "alt_line": is_alt  # Flag if it's an alternative line
                 })
 
         if not best_props:
             return "🚨 No valid props found for this game."
 
-        # Select top N props
+        # Sort by confidence and select top N props
         selected_props = sorted(best_props, key=lambda x: x["confidence_boost"], reverse=True)[:num_props]
 
         # Calculate Combined Odds
