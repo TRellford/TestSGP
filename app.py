@@ -1,9 +1,7 @@
 import streamlit as st
 import datetime
 import pandas as pd
-from utils import (
-    fetch_sgp_builder, get_nba_games
-)
+from utils import fetch_sgp_builder, get_nba_games
 
 st.set_page_config(page_title="NBA Betting AI", layout="wide")
 
@@ -37,7 +35,6 @@ if menu_option == "Same Game Parlay":
         min_odds, max_odds = None, None
 
         if filter_mode == "Filter by Confidence Score":
-            # Confidence Level Selection
             confidence_levels = [
                 ("High Confidence (80-100%)", "🔥", 80, 100),
                 ("Medium Confidence (60-79%)", "⚡", 60, 79),
@@ -49,7 +46,6 @@ if menu_option == "Same Game Parlay":
             confidence_level = selected_confidence[0]
 
         elif filter_mode == "Filter by Odds Range":
-            # Risk level selection with odds range
             risk_levels = [
                 ("🔵 Very Safe (-450 to -300)", "🔵", (-450, -300)),
                 ("🟢 Safe (-299 to -200)", "🟢", (-299, -200)),
@@ -62,70 +58,43 @@ if menu_option == "Same Game Parlay":
             selected_risk = next(((r, c, o) for r, c, o in risk_levels if f"{r}" == risk_index), risk_levels[0])
             risk_level, color, (min_odds, max_odds) = selected_risk
 
-        # Advanced insights toggle
         show_advanced = st.checkbox("Show Advanced Insights", value=False, key="adv_insights")
 
         if st.button("Generate SGP Prediction"):
-            st.write("🔄 Fetching Same Game Parlay (SGP) Predictions...")
+            sgp_results = fetch_sgp_builder(
+                selected_game,
+                num_props=num_props,
+                min_odds=min_odds if filter_mode == "Filter by Odds Range" else None,
+                max_odds=max_odds if filter_mode == "Filter by Odds Range" else None,
+                confidence_level=confidence_level if filter_mode == "Filter by Confidence Score" else None
+            )
 
-    try:
-        # Fetch SGP results
-        sgp_results = fetch_sgp_builder(
-            selected_game,
-            num_props=num_props,
-            min_odds=min_odds if filter_mode == "Filter by Odds Range" else None,
-            max_odds=max_odds if filter_mode == "Filter by Odds Range" else None,
-            confidence_level=confidence_level if filter_mode == "Filter by Confidence Score" else None
-        )
+            if sgp_results and "selected_props" in sgp_results:
+                selected_props = sgp_results["selected_props"]
+                df = pd.DataFrame(selected_props)
 
-        if not sgp_results:
-            st.error("🚨 No data returned from `fetch_sgp_builder()`. Please check your API response.")
-            
-        elif "selected_props" not in sgp_results or not sgp_results["selected_props"]:
-            st.warning("🚨 No valid props found for this game.")
-        
-        else:
-            selected_props = sgp_results["selected_props"]
-            df = pd.DataFrame(selected_props)
+                column_mapping = {
+                    "player": "Player",
+                    "prop": "Prop",
+                    "odds": "Odds",
+                    "confidence_boost": "Confidence Score",
+                    "Risk Level": "Risk Level",
+                    "Why This Pick?": "Why This Pick?"
+                }
+                df.rename(columns=column_mapping, inplace=True)
 
-            # Debugging: Print column names
-            st.write("🔍 **DEBUG:** Column Names in Fetched Data:", df.columns.tolist())
+                if not show_advanced:
+                    df = df[["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?"]]
+                else:
+                    df["AI Pick"] = "🔥 AI-Selected" if filter_mode == "Auto-Select Best Props" else "User Picked"
+                    df = df[["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?", "AI Pick"]]
 
-            # Column mapping
-            column_mapping = {
-                "player": "Player",
-                "prop": "Prop",
-                "odds": "Odds",
-                "confidence_boost": "Confidence Score",
-                "risk_level": "Risk Level",
-                "insight": "Why This Pick?"  
-        }
+                st.write("### 🎯 **Same Game Parlay Selections**")
+                st.dataframe(df, use_container_width=True)
 
-        df.rename(columns=column_mapping, inplace=True)
-
-        missing_columns = [col for col in column_mapping.values() if col not in df.columns]
-
-        if missing_columns:
-            st.error(f"🚨 Missing columns in data: {missing_columns}")
-            st.write("🔍 **DEBUG:** Full DataFrame", df)
-        else:
-            # Add AI Pick Label
-            df["AI Pick"] = "🔥 AI-Selected" if filter_mode == "Auto-Select Best Props" else "User Picked"
-
-            # Display basic vs. advanced view
-            if not show_advanced:
-                df = df[["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?"]]
+                if "combined_odds" in sgp_results:
+                    st.subheader(f"📊 **Final Parlay Odds: {sgp_results['combined_odds']}**")
             else:
-                df["Betting Edge"] = df["Betting Edge"].apply(lambda x: f"{x:.1f}%" if x > 0 else f"{x:.1f}% (Sharp Line)")
-                df = df[["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?", "Betting Edge", "AI Pick"]]
-
-            # Display table
-            st.write("### 🎯 **Same Game Parlay Selections**")
-            st.dataframe(df, use_container_width=True)
-
-            # Display Final Parlay Odds
-            if "combined_odds" in sgp_results:
-                st.subheader(f"📊 **Final Parlay Odds: {sgp_results['combined_odds']}**")
-
-    except Exception as e:
-        st.error(f"❌ An error occurred: {str(e)}")
+                st.warning("🚨 No valid props found for this game.")
+    else:
+        st.warning("🚨 No NBA games found for today.")
