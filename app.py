@@ -15,7 +15,7 @@ menu_option = st.sidebar.selectbox("Select a Section:", ["Same Game Parlay"])
 if menu_option == "Same Game Parlay":
     st.header("🎯 Same Game Parlay (SGP) - One Game Only")
 
-    # Display today's games (removing "Tomorrow's Games")
+    # Display today's games
     st.subheader(f"📅 Games for Today: {datetime.date.today().strftime('%Y-%m-%d')}")
     available_games = get_nba_games()
 
@@ -27,34 +27,52 @@ if menu_option == "Same Game Parlay":
         # Number of props selection
         num_props = st.slider("Number of Props (1-8):", 1, 8, 3, key="sgp_num_props")
 
-        # Risk level selection with colors
-        risk_levels = [
-            ("Very Safe", "🔵", (-450, -300)),
-            ("Safe", "🟢", (-299, -200)),
-            ("Moderate Risk", "🟡", (-199, +100)),
-            ("High Risk", "🟠", (+101, +250)),
-            ("Very High Risk", "🔴", (+251, float('inf')))
-        ]
-        risk_options = [f"{level} = {color}" for level, color, _ in risk_levels]
-        risk_index = st.selectbox("Select Risk Level:", risk_options, key="sgp_risk_level")
-        selected_risk = next(((r, c, o) for r, c, o in risk_levels if f"{r} :large_{c}_circle:" == risk_index), risk_levels[0])
-        risk_level, color, (min_odds, max_odds) = selected_risk  # Correct unpacking        risk_level, color, (min_odds, max_odds) = selected_risk
+        # Toggle for Filtering Mode
+        filter_mode = st.radio("Choose How to Select Props:", 
+                               ["Auto-Select Best Props", "Filter by Confidence Score", "Filter by Odds Range"], 
+                               key="filter_mode")
 
-        # Toggle: Choose Between Confidence Score or Odds Range
-        filter_type = st.radio("Filter by:", ["Confidence Score", "Odds Range"], key="filter_type")
-
+        # Define variables for filtering
         confidence_level = None
-        if filter_type == "Confidence Score":
-            confidence_level = st.selectbox("Select Confidence Level:", ["High", "Medium", "Low"])
+        min_odds, max_odds = None, None
+
+        if filter_mode == "Filter by Confidence Score":
+            # Confidence Level Selection
+            confidence_levels = [
+                ("High Confidence (80-100%)", "🔥", 80, 100),
+                ("Medium Confidence (60-79%)", "⚡", 60, 79),
+                ("Low Confidence (40-59%)", "⚠️", 40, 59)
+            ]
+            conf_options = [f"{level} {emoji}" for level, emoji, _, _ in confidence_levels]
+            conf_index = st.selectbox("Select Confidence Level:", conf_options, key="conf_level")
+            selected_confidence = next(((lvl, emj, min_c, max_c) for lvl, emj, min_c, max_c in confidence_levels if f"{lvl} {emj}" == conf_index), confidence_levels[0])
+            confidence_level = selected_confidence[0]
+
+        elif filter_mode == "Filter by Odds Range":
+            # Risk level selection with odds range
+            risk_levels = [
+                ("🔵 Very Safe (-450 to -300)", "🔵", (-450, -300)),
+                ("🟢 Safe (-299 to -200)", "🟢", (-299, -200)),
+                ("🟡 Moderate Risk (-199 to +100)", "🟡", (-199, 100)),
+                ("🟠 High Risk (+101 to +250)", "🟠", (101, 250)),
+                ("🔴 Very High Risk (+251 and above)", "🔴", (251, float('inf')))
+            ]
+            risk_options = [f"{level}" for level, _, _ in risk_levels]
+            risk_index = st.selectbox("Select Risk Level:", risk_options, key="sgp_risk_level")
+            selected_risk = next(((r, c, o) for r, c, o in risk_levels if f"{r}" == risk_index), risk_levels[0])
+            risk_level, color, (min_odds, max_odds) = selected_risk
+
+        # Advanced insights toggle
+        show_advanced = st.checkbox("Show Advanced Insights", value=False, key="adv_insights")
 
         if st.button("Generate SGP Prediction"):
             # Fetch SGP results
             sgp_results = fetch_sgp_builder(
                 selected_game,
                 num_props=num_props,
-                min_odds=min_odds if filter_type == "Odds Range" else None,
-                max_odds=max_odds if filter_type == "Odds Range" else None,
-                confidence_level=confidence_level if filter_type == "Confidence Score" else None
+                min_odds=min_odds if filter_mode == "Filter by Odds Range" else None,
+                max_odds=max_odds if filter_mode == "Filter by Odds Range" else None,
+                confidence_level=confidence_level if filter_mode == "Filter by Confidence Score" else None
             )
 
             # Display Results in a Table
@@ -72,12 +90,19 @@ if menu_option == "Same Game Parlay":
                         "alt_line": "Alt Line?",
                         "odds": "Odds",
                         "confidence_boost": "Confidence Score",
-                        "betting_edge": "Betting Edge"
+                        "betting_edge": "Betting Edge",
+                        "insight": "Why This Pick?"
                     }, inplace=True)
 
-                    # Adjust formatting
-                    df["Confidence Score"] = df["Confidence Score"].apply(lambda x: f"{x:.1f}%")
-                    df["Betting Edge"] = df["Betting Edge"].apply(lambda x: f"{x:.1f}%" if x > 0 else f"{x:.1f}% (Sharp Line)")
+                    # Add AI Auto-Picked Label
+                    df["AI Pick"] = df.apply(lambda x: "🔥 AI-Selected" if filter_mode == "Auto-Select Best Props" else "User Picked", axis=1)
+
+                    # Display Basic or Advanced View
+                    if not show_advanced:
+                        df = df[["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?"]]
+                    else:
+                        df["Betting Edge"] = df["Betting Edge"].apply(lambda x: f"{x:.1f}%" if x > 0 else f"{x:.1f}% (Sharp Line)")
+                        df = df[["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?", "Betting Edge", "AI Pick"]]
 
                     # Display table in Streamlit
                     st.write("### 🎯 **Same Game Parlay Selections**")
