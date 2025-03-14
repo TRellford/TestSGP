@@ -1,26 +1,22 @@
 import streamlit as st
 import datetime
-import math
+import pandas as pd
 from utils import (
-    fetch_sgp_builder,
-    get_nba_games
+    fetch_sgp_builder, get_nba_games
 )
 
-st.set_page_config(page_title="NBA Same Game Parlay AI", layout="wide")
+st.set_page_config(page_title="NBA Betting AI", layout="wide")
 
 # Sidebar Navigation
 st.sidebar.title("🔍 Navigation")
 menu_option = st.sidebar.selectbox("Select a Section:", ["Same Game Parlay"])
 
-# Same Game Parlay (SGP) Section
+# Same Game Parlay
 if menu_option == "Same Game Parlay":
     st.header("🎯 Same Game Parlay (SGP) - One Game Only")
 
-    # Game Date Selection
+    # Display today's games (removing "Tomorrow's Games")
     st.subheader(f"📅 Games for Today: {datetime.date.today().strftime('%Y-%m-%d')}")
-    game_date = datetime.date.today()
-
-    # Fetch Games
     available_games = get_nba_games()
 
     if available_games:
@@ -28,29 +24,70 @@ if menu_option == "Same Game Parlay":
         selected_game_label = st.selectbox("Select a Game:", game_labels, key="sgp_game")
         selected_game = next(g for g in available_games if f"{g['home_team']} vs {g['away_team']}" == selected_game_label)
 
-        # Number of Props Selection
-        num_props = st.slider("Number of Props (1-8):", 1, 8, 1, key="sgp_num_props")
+        # Number of props selection
+        num_props = st.slider("Number of Props (1-8):", 1, 8, 3, key="sgp_num_props")
 
-        # Toggle for Filtering by Confidence or Odds Range
-        filter_method = st.radio(
-            "Filter by:", ["Confidence Score", "Odds Range"], horizontal=True, key="sgp_filter"
-        )
+        # Risk level selection with colors
+        risk_levels = [
+            ("Very Safe", "blue", (-450, -300)),
+            ("Safe", "green", (-299, -200)),
+            ("Moderate Risk", "yellow", (-199, 100)),
+            ("High Risk", "orange", (101, 250)),
+            ("Very High Risk", "red", (251, float('inf')))
+        ]
+        risk_options = [f"{level} :large_{color}_circle:" for level, color, _ in risk_levels]
+        risk_index = st.selectbox("Select Risk Level:", risk_options, key="sgp_risk_level")
+        selected_risk = next((r for r, c, _ in risk_levels if f"{r} :large_{c}_circle:" == risk_index), risk_levels[0])
+        risk_level, color, (min_odds, max_odds) = selected_risk
 
-        if filter_method == "Confidence Score":
-            confidence_level = st.selectbox("Select Confidence Level:", ["High", "Medium", "Low"], key="sgp_confidence")
-            min_odds, max_odds = None, None  # Ignore odds filtering
+        # Toggle: Choose Between Confidence Score or Odds Range
+        filter_type = st.radio("Filter by:", ["Confidence Score", "Odds Range"], key="filter_type")
 
-        elif filter_method == "Odds Range":
-            min_odds, max_odds = st.slider("Set Odds Range:", min_value=-450, max_value=250, value=(-300, 100), key="sgp_odds")
-            confidence_level = None  # Ignore confidence filtering
+        confidence_level = None
+        if filter_type == "Confidence Score":
+            confidence_level = st.selectbox("Select Confidence Level:", ["High", "Medium", "Low"])
 
-        # Generate SGP Prediction
         if st.button("Generate SGP Prediction"):
-            sgp_result = fetch_sgp_builder(
-                selected_game, num_props=num_props, min_odds=min_odds, max_odds=max_odds,
-                confidence_level=confidence_level
+            # Fetch SGP results
+            sgp_results = fetch_sgp_builder(
+                selected_game,
+                num_props=num_props,
+                min_odds=min_odds if filter_type == "Odds Range" else None,
+                max_odds=max_odds if filter_type == "Odds Range" else None,
+                confidence_level=confidence_level if filter_type == "Confidence Score" else None
             )
-            st.write(sgp_result)
+
+            # Display Results in a Table
+            if sgp_results and isinstance(sgp_results, dict) and "selected_props" in sgp_results:
+                selected_props = sgp_results["selected_props"]
+                
+                if selected_props:
+                    # Convert to DataFrame for easy display
+                    df = pd.DataFrame(selected_props)
+
+                    # Rename columns for clarity
+                    df.rename(columns={
+                        "player": "Player",
+                        "prop": "Prop",
+                        "alt_line": "Alt Line?",
+                        "odds": "Odds",
+                        "confidence_boost": "Confidence Score",
+                        "betting_edge": "Betting Edge"
+                    }, inplace=True)
+
+                    # Adjust formatting
+                    df["Confidence Score"] = df["Confidence Score"].apply(lambda x: f"{x:.1f}%")
+                    df["Betting Edge"] = df["Betting Edge"].apply(lambda x: f"{x:.1f}%" if x > 0 else f"{x:.1f}% (Sharp Line)")
+
+                    # Display table in Streamlit
+                    st.write("### 🎯 **Same Game Parlay Selections**")
+                    st.dataframe(df, use_container_width=True)
+                else:
+                    st.warning("🚨 No valid player props found for this game.")
+
+            # Show Final Parlay Odds
+            if "combined_odds" in sgp_results:
+                st.subheader(f"📊 **Final Parlay Odds: {sgp_results['combined_odds']}**")
 
     else:
-        st.warning("🚨 No NBA games found for the selected date.")
+        st.warning("🚨 No NBA games found for today.")
