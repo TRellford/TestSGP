@@ -73,9 +73,9 @@ if menu_option == "Same Game Parlay":
                 selected_props = sgp_results["selected_props"]
     
         if not selected_props:
-        st.warning("🚨 No valid props found for this game.")
+            st.warning("🚨 No valid props found for this game.")
             else:
-        df = pd.DataFrame(selected_props)
+                df = pd.DataFrame(selected_props)
         
         # Print column names for debugging
         st.write("🔍 **DEBUG: DataFrame Columns Before Renaming:**", df.columns.tolist())
