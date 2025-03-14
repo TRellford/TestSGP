@@ -79,41 +79,41 @@ if menu_option == "Same Game Parlay":
                     sgp_results = {}
             
             except Exception as e:
-        st.error(f"🚨 Exception in fetch_sgp_builder(): {e}")
-        sgp_results = {}
+                st.error(f"🚨 Exception in fetch_sgp_builder(): {e}")
+                sgp_results = {}
 
     # Debugging: Check if `sgp_results` contains expected data
-    st.write("🔍 **DEBUG: SGP Results Output:**", sgp_results)
+            st.write("🔍 **DEBUG: SGP Results Output:**", sgp_results)
 
-    if "selected_props" in sgp_results and sgp_results["selected_props"]:
-        selected_props = sgp_results["selected_props"]
-        df = pd.DataFrame(selected_props)
+            if "selected_props" in sgp_results and sgp_results["selected_props"]:
+                selected_props = sgp_results["selected_props"]
+                df = pd.DataFrame(selected_props)
 
-        # Debugging: Print column names
-        st.write("🔍 **DEBUG: DataFrame Columns Before Renaming:**", df.columns.tolist())
-        st.write(df.head())
+                # Debugging: Print column names
+                st.write("🔍 **DEBUG: DataFrame Columns Before Renaming:**", df.columns.tolist())
+                st.write(df.head())
 
-        column_mapping = {
-            "player": "Player",
-            "prop": "Prop",
-            "odds": "Odds",
-            "confidence_boost": "Confidence Score",
-            "risk_level": "Risk Level",
-            "insight": "Why This Pick?"
-        }
-        df.rename(columns=column_mapping, inplace=True)
+                column_mapping = {
+                    "player": "Player",
+                    "prop": "Prop",
+                    "odds": "Odds",
+                    "confidence_boost": "Confidence Score",
+                    "risk_level": "Risk Level",
+                    "insight": "Why This Pick?"
+                }
+                df.rename(columns=column_mapping, inplace=True)
 
-        # Check if required columns exist
-        required_columns = ["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?"]
-        missing_columns = [col for col in required_columns if col not in df.columns]
+                # Check if required columns exist
+                required_columns = ["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?"]
+                missing_columns = [col for col in required_columns if col not in df.columns]
 
-        if missing_columns:
-            st.error(f"🚨 Missing columns: {missing_columns}")
+                if missing_columns:
+                    st.error(f"🚨 Missing columns: {missing_columns}")
+                else:
+                    st.write("### 🎯 **Same Game Parlay Selections**")
+                    st.dataframe(df, use_container_width=True)
+
+                    if "combined_odds" in sgp_results:
+                        st.subheader(f"📊 **Final Parlay Odds: {sgp_results['combined_odds']}**")
         else:
-            st.write("### 🎯 **Same Game Parlay Selections**")
-            st.dataframe(df, use_container_width=True)
-
-            if "combined_odds" in sgp_results:
-                st.subheader(f"📊 **Final Parlay Odds: {sgp_results['combined_odds']}**")
-    else:
-        st.warning("🚨 No valid props found for this game.")
+            st.warning("🚨 No valid props found for this game.")
