@@ -106,8 +106,19 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
         for market in fanduel.get("markets", []):
             for outcome in market.get("outcomes", []):
                 price = outcome["price"]
-                player_name = outcome["name"]
-                prop_type = market["key"].replace("player_", "").capitalize()
+                # Extract actual player name (FanDuel sometimes stores "Over" in outcome["name"])
+                player_name = outcome["description"].split(" Over")[0] if " Over" in outcome["description"] else outcome["description"].split(" Under")[0]
+
+                # Format prop type correctly
+                prop_mappings = {
+                "points_alternate": "Alternate Points",
+                "rebounds_alternate": "Alternate Rebounds",
+                "assists_alternate": "Alternate Assists",
+                "threes_alternate": "Alternate Threes",
+                "three_pointers_made": "3PT Made"
+}
+                prop_type = prop_mappings.get(market["key"], market["key"].replace("_", " ").title())
+
 
                 # Identify if it's an alternative line
                 is_alt = "alternate" in market["key"]
