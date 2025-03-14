@@ -61,25 +61,29 @@ if menu_option == "Same Game Parlay":
         show_advanced = st.checkbox("Show Advanced Insights", value=False, key="adv_insights")
 
         if st.button("Generate SGP Prediction"):
-            sgp_results = fetch_sgp_builder(
-                selected_game,
-                num_props=num_props,
-                min_odds=min_odds if filter_mode == "Filter by Odds Range" else None,
-                max_odds=max_odds if filter_mode == "Filter by Odds Range" else None,
-                confidence_level=confidence_level if filter_mode == "Filter by Confidence Score" else None
-            )
+    sgp_results = fetch_sgp_builder(
+        selected_game,
+        num_props=num_props,
+        min_odds=min_odds if filter_mode == "Filter by Odds Range" else None,
+        max_odds=max_odds if filter_mode == "Filter by Odds Range" else None,
+        confidence_level=confidence_level if filter_mode == "Filter by Confidence Score" else None
+    )
 
-        if sgp_results and "selected_props" in sgp_results:
-                selected_props = sgp_results["selected_props"]
-    
-        if not selected_props:
-            st.warning("🚨 No valid props found for this game.")
-        else:
-                df = pd.DataFrame(selected_props)
-        
-        # Print column names for debugging
+    # Ensure `sgp_results` is defined
+    if sgp_results is None:
+        st.error("🚨 Error: No data returned from fetch_sgp_builder().")
+        sgp_results = {}
+
+    # Debugging Output
+    st.write("🔍 **DEBUG: SGP Results:**", sgp_results)
+
+    if "selected_props" in sgp_results and sgp_results["selected_props"]:
+        selected_props = sgp_results["selected_props"]
+        df = pd.DataFrame(selected_props)
+
+        # Debugging: Check columns before renaming
         st.write("🔍 **DEBUG: DataFrame Columns Before Renaming:**", df.columns.tolist())
-        st.write(df.head())  # Show the first few rows for debugging
+        st.write(df.head())
 
         column_mapping = {
             "player": "Player",
@@ -91,20 +95,22 @@ if menu_option == "Same Game Parlay":
         }
         df.rename(columns=column_mapping, inplace=True)
 
-        # Print new column names after renaming
+        # Debugging: Check new column names
         st.write("🔍 **DEBUG: DataFrame Columns After Renaming:**", df.columns.tolist())
 
-        # Ensure required columns exist before selecting them
+        # Ensure required columns exist
         required_columns = ["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?"]
         missing_columns = [col for col in required_columns if col not in df.columns]
 
         if missing_columns:
             st.error(f"🚨 Missing columns in data: {missing_columns}")
         else:
-            df = df[required_columns]  # Select only the necessary columns
+            df = df[required_columns]  # Select only necessary columns
 
             st.write("### 🎯 **Same Game Parlay Selections**")
             st.dataframe(df, use_container_width=True)
 
             if "combined_odds" in sgp_results:
                 st.subheader(f"📊 **Final Parlay Odds: {sgp_results['combined_odds']}**")
+    else:
+        st.warning("🚨 No valid props found for this game.")
