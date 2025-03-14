@@ -65,8 +65,8 @@ if menu_option == "Same Game Parlay":
         # Advanced insights toggle
         show_advanced = st.checkbox("Show Advanced Insights", value=False, key="adv_insights")
 
-    if st.button("Generate SGP Prediction"):
-    st.write("🔄 Fetching Same Game Parlay (SGP) Predictions...")
+        if st.button("Generate SGP Prediction"):
+            st.write("🔄 Fetching Same Game Parlay (SGP) Predictions...")
 
     try:
         # Fetch SGP results
