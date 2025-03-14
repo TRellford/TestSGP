@@ -9,13 +9,14 @@ ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds"
 EVENT_ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/odds"
 BALL_DONT_LIE_API_URL = "https://api.balldontlie.io/v1"
 
-# Fetch NBA Games
-def get_nba_games(date):
-    """Fetch NBA games from Balldontlie API."""
+# Fetch NBA Games (Only Today's Games)
+def get_nba_games():
+    """Fetch NBA games for today from Balldontlie API."""
     try:
+        today = datetime.today().strftime("%Y-%m-%d")
         url = f"{BALL_DONT_LIE_API_URL}/games"
         headers = {"Authorization": st.secrets["balldontlie_api_key"]}
-        params = {"dates[]": date.strftime("%Y-%m-%d")}
+        params = {"dates[]": today}
 
         response = requests.get(url, headers=headers, params=params)
 
@@ -68,7 +69,7 @@ def get_event_id(selected_game):
         st.error(f"❌ Unexpected error fetching event ID: {e}")
         return None
 
-# Fetch Player Props for a Given Game
+# Fetch Player Props for a Given Game (with Debugging Logs)
 def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, confidence_level=None):
     """Fetch player props for a Same Game Parlay (SGP), including alternative lines."""
 
@@ -117,6 +118,9 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
                 betting_edge = (ai_probability - sportsbook_implied_prob) / sportsbook_implied_prob if sportsbook_implied_prob > 0 else 0
                 confidence_boost = min(max(betting_edge * 50 + 50, 0), 100)
 
+                # Debugging: Print all props before filtering
+                print(f"DEBUG: Found Prop - {player_name} | {prop_type} | Odds: {price} | Confidence: {confidence_boost}")
+
                 # Filter by Confidence Score
                 if confidence_level:
                     confidence_mapping = {"High": 80, "Medium": 60, "Low": 40}
@@ -140,7 +144,7 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
                 })
 
         if not best_props:
-            return "🚨 No valid props found for this game."
+            return "🚨 No valid props found for this game. (DEBUG: No props met the filter criteria)"
 
         # Sort by confidence and select top N props
         selected_props = sorted(best_props, key=lambda x: x["confidence_boost"], reverse=True)[:num_props]
