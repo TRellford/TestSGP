@@ -71,7 +71,7 @@ def get_event_id(selected_game):
 
 # Fetch Player Props for a Given Game (with Debugging Logs)
 def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, confidence_level=None):
-    """Fetch player props for a Same Game Parlay (SGP), including alternative lines."""
+    """Fetch player props for a Same Game Parlay (SGP), including standard and alternate lines."""
 
     event_id = get_event_id(selected_game)
     if not event_id:
@@ -83,7 +83,12 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
             params={
                 "apiKey": st.secrets["odds_api_key"],
                 "regions": "us",
-                "markets": "player_points,player_assists,player_rebounds,player_alt_points,player_alt_rebounds,player_alt_assists",
+                "markets": ",".join([
+                    "player_points", "player_rebounds", "player_assists", "player_three_pointers_made",
+                    "player_points_alternate", "player_rebounds_alternate", "player_assists_alternate",
+                    "player_threes_alternate", "player_points_assists_alternate", "player_points_rebounds_alternate",
+                    "player_rebounds_assists_alternate", "player_points_rebounds_assists_alternate"
+                ]),
                 "bookmakers": "fanduel"
             }
         )
@@ -106,7 +111,7 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
                 prop_type = market["key"].replace("player_", "").capitalize()
 
                 # Identify if it's an alternative line
-                is_alt = "alt" in market["key"]
+                is_alt = "alternate" in market["key"]
 
                 # Convert sportsbook odds to implied probability
                 sportsbook_implied_prob = 1 / (1 + (price / 100 if price > 0 else 100 / abs(price)))
@@ -117,9 +122,6 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
                 # Betting edge calculation
                 betting_edge = (ai_probability - sportsbook_implied_prob) / sportsbook_implied_prob if sportsbook_implied_prob > 0 else 0
                 confidence_boost = min(max(betting_edge * 50 + 50, 0), 100)
-
-                # Debugging: Print all props before filtering
-                print(f"DEBUG: Found Prop - {player_name} | {prop_type} | Odds: {price} | Confidence: {confidence_boost}")
 
                 # Filter by Confidence Score
                 if confidence_level:
