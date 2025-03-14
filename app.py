@@ -61,7 +61,7 @@ if menu_option == "Same Game Parlay":
         show_advanced = st.checkbox("Show Advanced Insights", value=False, key="adv_insights")
 
         if st.button("Generate SGP Prediction"):
-    sgp_results = fetch_sgp_builder(
+        sgp_results = fetch_sgp_builder(
         selected_game,
         num_props=num_props,
         min_odds=min_odds if filter_mode == "Filter by Odds Range" else None,
