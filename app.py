@@ -36,27 +36,27 @@ if menu_option == "Same Game Parlay":
 
         if filter_mode == "Filter by Confidence Score":
             confidence_levels = [
-                ("High Confidence (80-100%)", "🔥", 80, 100),
-                ("Medium Confidence (60-79%)", "⚡", 60, 79),
-                ("Low Confidence (40-59%)", "⚠️", 40, 59)
+                ("🔥 High Confidence (80-100%)", 80, 100),
+                ("⚡ Medium Confidence (60-79%)", 60, 79),
+                ("⚠️ Low Confidence (40-59%)", 40, 59)
             ]
-            conf_options = [f"{level} {emoji}" for level, emoji, _, _ in confidence_levels]
+            conf_options = [level for level, _, _ in confidence_levels]
             conf_index = st.selectbox("Select Confidence Level:", conf_options, key="conf_level")
-            selected_confidence = next(((lvl, emj, min_c, max_c) for lvl, emj, min_c, max_c in confidence_levels if f"{lvl} {emj}" == conf_index), confidence_levels[0])
-            confidence_level = selected_confidence[0]
+            selected_confidence = next((min_c, max_c) for lvl, min_c, max_c in confidence_levels if lvl == conf_index)
+            confidence_level = selected_confidence
 
         elif filter_mode == "Filter by Odds Range":
             risk_levels = [
-                ("🔵 Very Safe (-450 to -300)", "🔵", (-450, -300)),
-                ("🟢 Safe (-299 to -200)", "🟢", (-299, -200)),
-                ("🟡 Moderate Risk (-199 to +100)", "🟡", (-199, 100)),
-                ("🟠 High Risk (+101 to +250)", "🟠", (101, 250)),
-                ("🔴 Very High Risk (+251 and above)", "🔴", (251, float('inf')))
+                ("🔵 Very Safe (-450 to -300)", -450, -300),
+                ("🟢 Safe (-299 to -200)", -299, -200),
+                ("🟡 Moderate Risk (-199 to +100)", -199, 100),
+                ("🟠 High Risk (+101 to +250)", 101, 250),
+                ("🔴 Very High Risk (+251 and above)", 251, float('inf'))
             ]
-            risk_options = [f"{level}" for level, _, _ in risk_levels]
+            risk_options = [level for level, _, _ in risk_levels]
             risk_index = st.selectbox("Select Risk Level:", risk_options, key="sgp_risk_level")
-            selected_risk = next(((r, c, o) for r, c, o in risk_levels if f"{r}" == risk_index), risk_levels[0])
-            risk_level, color, (min_odds, max_odds) = selected_risk
+            selected_risk = next((min_o, max_o) for lvl, min_o, max_o in risk_levels if lvl == risk_index)
+            min_odds, max_odds = selected_risk
 
         show_advanced = st.checkbox("Show Advanced Insights", value=False, key="adv_insights")
 
