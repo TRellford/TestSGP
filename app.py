@@ -22,7 +22,7 @@ if menu_option == "Same Game Parlay":
     game_date = base_date if date_option == "Today's Games" else base_date + datetime.timedelta(days=1)
 
     # Fetch Games
-    available_games = get_nba_games(game_date)
+    available_games = get_nba_games()
 
     if available_games:
         game_labels = [f"{game['home_team']} vs {game['away_team']}" for game in available_games]
