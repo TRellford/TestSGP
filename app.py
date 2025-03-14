@@ -74,7 +74,7 @@ if menu_option == "Same Game Parlay":
     
         if not selected_props:
             st.warning("🚨 No valid props found for this game.")
-            else:
+        else:
                 df = pd.DataFrame(selected_props)
         
         # Print column names for debugging
