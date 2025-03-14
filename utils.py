@@ -21,50 +21,48 @@ def get_current_season_year():
     else:  # Before October: previous year
         return str(today.year - 1)
 
-def fetch_games(date, max_retries=5, initial_delay=3):
-    """Fetch NBA games from Balldontlie API with improved error handling and retries."""
-    api_key = st.secrets.get("balldontlie_api_key", None)
-    if not api_key:
-        st.error("❌ Balldontlie API key is missing in secrets. Please add 'balldontlie_api_key' to your Streamlit secrets.")
+import requests
+import streamlit as st
+
+# API Configuration
+BALL_DONT_LIE_API_URL = "https://api.balldontlie.io/v1"
+
+def get_nba_games(date):
+    """Fetch NBA games from Balldontlie API."""
+    try:
+        url = f"{BALL_DONT_LIE_API_URL}/games"
+        headers = {"Authorization": st.secrets["balldontlie_api_key"]}
+        params = {"dates[]": date.strftime("%Y-%m-%d")}
+
+        response = requests.get(url, headers=headers, params=params)
+
+        if response.status_code == 401:
+            st.error("❌ Unauthorized (401). Check your Balldontlie API key in secrets.")
+            return []
+        if response.status_code != 200:
+            st.error(f"❌ Error fetching games: {response.status_code} - {response.text}")
+            return []
+
+        games_data = response.json().get("data", [])
+
+        if not games_data:
+            st.warning(f"⚠️ No NBA games found for {date.strftime('%Y-%m-%d')}.")
+            return []
+
+        formatted_games = [
+            {
+                "home_team": game["home_team"]["full_name"],
+                "away_team": game["visitor_team"]["full_name"],
+                "game_id": game["id"],
+                "date": game["date"]
+            }
+            for game in games_data
+        ]
+        return formatted_games
+
+    except Exception as e:
+        st.error(f"❌ Unexpected error fetching games: {e}")
         return []
-
-    url = f"{BALL_DONT_LIE_API_URL}/games"
-    headers = {"Authorization": api_key}
-    params = {"dates[]": date.strftime("%Y-%m-%d")}
-
-    retries = 0
-    while retries < max_retries:
-        try:
-            response = requests.get(url, headers=headers, params=params, timeout=10)
-            response.raise_for_status()
-            games_data = response.json().get("data", [])
-
-            if not games_data:
-                st.warning(f"⚠️ No games found for {date.strftime('%Y-%m-%d')}. Retrying...")
-                retries += 1
-                time.sleep(initial_delay * (2 ** retries))  # Exponential backoff
-                continue
-
-            formatted_games = [
-                {
-                    "id": game["id"],
-                    "display": f"{game['home_team']['abbreviation']} vs {game['visitor_team']['abbreviation']}",
-                    "home_team": game["home_team"]["full_name"],
-                    "away_team": game["visitor_team"]["full_name"],
-                    "date": game["date"]
-                }
-                for game in games_data
-            ]
-            return formatted_games
-
-        except requests.exceptions.RequestException as e:
-            st.warning(f"⚠️ API request error: {e}. Retrying... (Attempt {retries + 1}/{max_retries})")
-            retries += 1
-            time.sleep(initial_delay * (2 ** retries))
-
-    st.error("❌ Failed to fetch games after multiple retries. Please check API key, rate limits, or try again later.")
-    return []
-
 def fetch_odds_api_events(date):
     """Fetch all NBA events from The Odds API for a given date."""
     api_key = st.secrets.get("odds_api_key", None)
