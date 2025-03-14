@@ -66,53 +66,52 @@ if menu_option == "Same Game Parlay":
         show_advanced = st.checkbox("Show Advanced Insights", value=False, key="adv_insights")
 
         if st.button("Generate SGP Prediction"):
-            # Fetch SGP results
-            sgp_results = fetch_sgp_builder(
-                selected_game,
-                num_props=num_props,
-                min_odds=min_odds if filter_mode == "Filter by Odds Range" else None,
-                max_odds=max_odds if filter_mode == "Filter by Odds Range" else None,
-                confidence_level=confidence_level if filter_mode == "Filter by Confidence Score" else None
-            )
+    # Fetch SGP results
+    sgp_results = fetch_sgp_builder(
+        selected_game,
+        num_props=num_props,
+        min_odds=min_odds if filter_mode == "Filter by Odds Range" else None,
+        max_odds=max_odds if filter_mode == "Filter by Odds Range" else None,
+        confidence_level=confidence_level if filter_mode == "Filter by Confidence Score" else None
+    )
 
-            # Display Results in a Table
-            if sgp_results and isinstance(sgp_results, dict) and "selected_props" in sgp_results:
-                selected_props = sgp_results["selected_props"]
-                
-                if selected_props:
-                    # Convert to DataFrame for easy display
-                    df = pd.DataFrame(selected_props)
+    if sgp_results and isinstance(sgp_results, dict) and "selected_props" in sgp_results:
+        selected_props = sgp_results["selected_props"]
+        
+        if selected_props:
+            df = pd.DataFrame(selected_props)
 
-                    # Rename columns for clarity
-                    df.rename(columns={
-                        "player": "Player",
-                        "prop": "Prop",
-                        "alt_line": "Alt Line?",
-                        "odds": "Odds",
-                        "confidence_boost": "Confidence Score",
-                        "betting_edge": "Betting Edge",
-                        "insight": "Why This Pick?"
-                    }, inplace=True)
+            # 🔍 Debug: Print the actual column names before slicing
+            st.write("🔍 **DEBUG:** Column Names in Fetched Data:", df.columns.tolist())
 
-                    # Add AI Auto-Picked Label
-                    df["AI Pick"] = df.apply(lambda x: "🔥 AI-Selected" if filter_mode == "Auto-Select Best Props" else "User Picked", axis=1)
+            # Ensure proper column renaming (modify as needed)
+            column_mapping = {
+                "player": "Player",
+                "prop": "Prop",
+                "odds": "Odds",
+                "confidence_boost": "Confidence Score",
+                "risk_level": "Risk Level",
+                "insight": "Why This Pick?"  # Ensure this exists
+            }
 
-                    # Display Basic or Advanced View
-                    if not show_advanced:
-                        df = df[["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?"]]
-                    else:
-                        df["Betting Edge"] = df["Betting Edge"].apply(lambda x: f"{x:.1f}%" if x > 0 else f"{x:.1f}% (Sharp Line)")
-                        df = df[["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?", "Betting Edge", "AI Pick"]]
+            # Apply renaming, dropping missing columns
+            df.rename(columns=column_mapping, inplace=True)
+            missing_columns = [col for col in column_mapping.values() if col not in df.columns]
 
-                    # Display table in Streamlit
-                    st.write("### 🎯 **Same Game Parlay Selections**")
-                    st.dataframe(df, use_container_width=True)
+            if missing_columns:
+                st.error(f"🚨 Missing columns in data: {missing_columns}")
+                st.write("🔍 **DEBUG:** Full DataFrame", df)
+            else:
+                # Apply AI auto-pick label
+                df["AI Pick"] = "🔥 AI-Selected" if filter_mode == "Auto-Select Best Props" else "User Picked"
+
+                # Display basic vs. advanced view
+                if not show_advanced:
+                    df = df[["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?"]]
                 else:
-                    st.warning("🚨 No valid player props found for this game.")
+                    df["Betting Edge"] = df["Betting Edge"].apply(lambda x: f"{x:.1f}%" if x > 0 else f"{x:.1f}% (Sharp Line)")
+                    df = df[["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?", "Betting Edge", "AI Pick"]]
 
-            # Show Final Parlay Odds
-            if "combined_odds" in sgp_results:
-                st.subheader(f"📊 **Final Parlay Odds: {sgp_results['combined_odds']}**")
-
-    else:
-        st.warning("🚨 No NBA games found for today.")
+                # Show the table
+                st.write("### 🎯 **Same Game Parlay Selections**")
+                st.dataframe(df, use_container_width=True)
