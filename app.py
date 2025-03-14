@@ -80,26 +80,25 @@ if menu_option == "Same Game Parlay":
 
         if not sgp_results:
             st.error("🚨 No data returned from `fetch_sgp_builder()`. Please check your API response.")
-            return
-
-        if "selected_props" not in sgp_results or not sgp_results["selected_props"]:
+            
+        elif "selected_props" not in sgp_results or not sgp_results["selected_props"]:
             st.warning("🚨 No valid props found for this game.")
-            return
+        
+        else:
+            selected_props = sgp_results["selected_props"]
+            df = pd.DataFrame(selected_props)
 
-        selected_props = sgp_results["selected_props"]
-        df = pd.DataFrame(selected_props)
+            # Debugging: Print column names
+            st.write("🔍 **DEBUG:** Column Names in Fetched Data:", df.columns.tolist())
 
-        # Debugging: Print column names
-        st.write("🔍 **DEBUG:** Column Names in Fetched Data:", df.columns.tolist())
-
-        # Column mapping
-        column_mapping = {
-            "player": "Player",
-            "prop": "Prop",
-            "odds": "Odds",
-            "confidence_boost": "Confidence Score",
-            "risk_level": "Risk Level",
-            "insight": "Why This Pick?"  
+            # Column mapping
+            column_mapping = {
+                "player": "Player",
+                "prop": "Prop",
+                "odds": "Odds",
+                "confidence_boost": "Confidence Score",
+                "risk_level": "Risk Level",
+                "insight": "Why This Pick?"  
         }
 
         df.rename(columns=column_mapping, inplace=True)
