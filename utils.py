@@ -84,7 +84,7 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
                 "apiKey": st.secrets["odds_api_key"],
                 "regions": "us",
                 "markets": ",".join([
-                    "player_points", "player_rebounds", "player_assists", "player_three_pointers_made",  # Standard Props
+                    "player_points", "player_rebounds", "player_assists", "player_threes",  # Standard Props
                     "player_points_alternate", "player_rebounds_alternate", "player_assists_alternate",  # Alt Props
                     "player_threes_alternate"  # Alternate 3PTM Props
                 ]),
