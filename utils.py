@@ -47,8 +47,32 @@ def fetch_games(date, max_retries=3, initial_delay=2):
             print(f"Games Data: {games_data}")  # Debug: Log parsed games data
 
             if not games_data:
-                st.warning(f"No games found for {date.strftime('%Y-%m-%d')}. This could be due to no scheduled games, a data delay, or API limitations.")
-                return []
+                st.warning(f"No games found for {date.strftime('%Y-%m-%d')}. This could be due to no scheduled games, a data delay, or API limitations. Trying a fallback date (2025-03-11)...")
+                # Fallback to a known date with games (e.g., March 11, 2025, based on web data)
+                fallback_date = date(2025, 3, 11)
+                params = {"dates[]": fallback_date.strftime("%Y-%m-%d")}
+                response = requests.get(url, headers=headers, params=params, timeout=10)
+                print(f"Fallback Request URL: {response.url}")
+                print(f"Fallback Response Status Code: {response.status_code}")
+                print(f"Fallback Raw Response: {response.text}")
+                response.raise_for_status()
+                games_data = response.json().get("data", [])
+                if not games_data:
+                    st.warning("No games found even on fallback date. Check API availability.")
+                    return []
+                else:
+                    st.write(f"Found {len(games_data)} games on fallback date {fallback_date.strftime('%Y-%m-%d')}")
+                    formatted_games = [
+                        {
+                            "id": game["id"],
+                            "display": f"{game['home_team']['abbreviation']} vs {game['visitor_team']['abbreviation']}",
+                            "home_team": game["home_team"]["full_name"],
+                            "away_team": game["visitor_team"]["full_name"],
+                            "date": game["date"]
+                        }
+                        for game in games_data
+                    ]
+                    return formatted_games
 
             formatted_games = [
                 {
@@ -72,6 +96,9 @@ def fetch_games(date, max_retries=3, initial_delay=2):
                 wait_time = initial_delay * (2 ** retries)  # Exponential backoff: 2s, 4s, 8s
                 st.warning(f"Rate limit exceeded for Balldontlie API. Retrying in {wait_time} seconds... (Attempt {retries}/{max_retries})")
                 time.sleep(wait_time)
+            elif response.status_code == 404:
+                st.error(f"❌ 404 Not Found for URL: {response.url}. The requested resource is not available. Check API documentation or parameters.")
+                return []
             else:
                 st.error(f"❌ HTTP error fetching games: {response.status_code} - {response.text}")
                 return []
