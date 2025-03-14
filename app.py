@@ -29,11 +29,11 @@ if menu_option == "Same Game Parlay":
 
         # Risk level selection with colors
         risk_levels = [
-            ("Very Safe", "blue", (-450, -300)),
-            ("Safe", "green", (-299, -200)),
-            ("Moderate Risk", "yellow", (-199, 100)),
-            ("High Risk", "orange", (101, 250)),
-            ("Very High Risk", "red", (251, float('inf')))
+            ("Very Safe", "🔵", (-450, -300)),
+            ("Safe", "🟢", (-299, -200)),
+            ("Moderate Risk", "🟡", (-199, +100)),
+            ("High Risk", "🟠", (+101, +250)),
+            ("Very High Risk", "🔴", (+251, float('inf')))
         ]
         risk_options = [f"{level} :large_{color}_circle:" for level, color, _ in risk_levels]
         risk_index = st.selectbox("Select Risk Level:", risk_options, key="sgp_risk_level")
