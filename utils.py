@@ -21,8 +21,8 @@ def get_current_season_year():
     else:  # Before October: previous year
         return str(today.year - 1)
 
-def fetch_games(date, max_retries=3, initial_delay=2):
-    """Fetch NBA games from Balldontlie API for a given date with retries."""
+def fetch_games(date, max_retries=5, initial_delay=3):
+    """Fetch NBA games from Balldontlie API with improved error handling and retries."""
     api_key = st.secrets.get("balldontlie_api_key", None)
     if not api_key:
         st.error("❌ Balldontlie API key is missing in secrets. Please add 'balldontlie_api_key' to your Streamlit secrets.")
@@ -35,51 +35,15 @@ def fetch_games(date, max_retries=3, initial_delay=2):
     retries = 0
     while retries < max_retries:
         try:
-            # Add a small delay to avoid rate limits
-            time.sleep(initial_delay)
-            
-            st.write(f"Fetching games for date: {date.strftime('%Y-%m-%d')} (Attempt {retries + 1}/{max_retries})")
             response = requests.get(url, headers=headers, params=params, timeout=10)
-            
-            # Log the request and response details
-            print(f"Request URL: {response.url}")
-            print(f"Request Headers: {headers}")
-            print(f"Response Status Code: {response.status_code}")
-            print(f"Raw Response: {response.text}")
-
-            response.raise_for_status()  # Raises an HTTPError for bad responses
-
+            response.raise_for_status()
             games_data = response.json().get("data", [])
-            print(f"Parsed Games Data: {games_data}")
 
             if not games_data:
-                st.warning(f"No games found for {date.strftime('%Y-%m-%d')}. This could be due to no scheduled games, a data delay, or API limitations.")
-                # Fallback to a known date with games (e.g., March 11, 2025)
-                st.write("Trying a fallback date (2025-03-11)...")
-                fallback_date = date(2025, 3, 11)
-                params = {"dates[]": fallback_date.strftime("%Y-%m-%d")}
-                response = requests.get(url, headers=headers, params=params, timeout=10)
-                print(f"Fallback Request URL: {response.url}")
-                print(f"Fallback Response Status Code: {response.status_code}")
-                print(f"Fallback Raw Response: {response.text}")
-                response.raise_for_status()
-                games_data = response.json().get("data", [])
-                if not games_data:
-                    st.warning("No games found even on fallback date. The API might be down or your key might be invalid.")
-                    return []
-                else:
-                    st.write(f"Found {len(games_data)} games on fallback date {fallback_date.strftime('%Y-%m-%d')}")
-                    formatted_games = [
-                        {
-                            "id": game["id"],
-                            "display": f"{game['home_team']['abbreviation']} vs {game['visitor_team']['abbreviation']}",
-                            "home_team": game["home_team"]["full_name"],
-                            "away_team": game["visitor_team"]["full_name"],
-                            "date": game["date"]
-                        }
-                        for game in games_data
-                    ]
-                    return formatted_games
+                st.warning(f"⚠️ No games found for {date.strftime('%Y-%m-%d')}. Retrying...")
+                retries += 1
+                time.sleep(initial_delay * (2 ** retries))  # Exponential backoff
+                continue
 
             formatted_games = [
                 {
@@ -91,32 +55,14 @@ def fetch_games(date, max_retries=3, initial_delay=2):
                 }
                 for game in games_data
             ]
-            st.write(f"Found {len(formatted_games)} games for {date.strftime('%Y-%m-%d')}")
             return formatted_games
 
-        except requests.exceptions.HTTPError as e:
-            if response.status_code == 401:
-                st.error("❌ Unauthorized (401). Check your Balldontlie API key in secrets.")
-                return []
-            elif response.status_code == 429:
-                retries += 1
-                wait_time = initial_delay * (2 ** retries)  # Exponential backoff: 2s, 4s, 8s
-                st.warning(f"Rate limit exceeded for Balldontlie API. Retrying in {wait_time} seconds... (Attempt {retries}/{max_retries})")
-                time.sleep(wait_time)
-            elif response.status_code == 404:
-                st.error(f"❌ 404 Not Found for URL: {response.url}. The requested resource is not available. Check API documentation or parameters.")
-                return []
-            else:
-                st.error(f"❌ HTTP error fetching games: {response.status_code} - {response.text}")
-                return []
         except requests.exceptions.RequestException as e:
-            st.error(f"❌ Network error fetching games: {e}")
-            return []
-        except Exception as e:
-            st.error(f"❌ Unexpected error fetching games: {e}")
-            return []
+            st.warning(f"⚠️ API request error: {e}. Retrying... (Attempt {retries + 1}/{max_retries})")
+            retries += 1
+            time.sleep(initial_delay * (2 ** retries))
 
-    st.error(f"⚠️ Failed to fetch games after {max_retries} retries. Please check your API key, rate limits, or try again later.")
+    st.error("❌ Failed to fetch games after multiple retries. Please check API key, rate limits, or try again later.")
     return []
 
 def fetch_odds_api_events(date):
