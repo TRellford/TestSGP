@@ -71,7 +71,7 @@ def get_event_id(selected_game):
 
 # Fetch Player Props for a Given Game (with Debugging Logs)
 def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, confidence_level=None):
-    """Fetch player props for a Same Game Parlay (SGP), including standard and alternate lines."""
+    """Fetch player props for a Same Game Parlay (SGP), including standard and alternate lines for all categories."""
 
     event_id = get_event_id(selected_game)
     if not event_id:
@@ -84,10 +84,9 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
                 "apiKey": st.secrets["odds_api_key"],
                 "regions": "us",
                 "markets": ",".join([
-                    "player_points", "player_rebounds", "player_assists", "player_three_pointers_made",
-                    "player_points_alternate", "player_rebounds_alternate", "player_assists_alternate",
-                    "player_threes_alternate", "player_points_assists_alternate", "player_points_rebounds_alternate",
-                    "player_rebounds_assists_alternate", "player_points_rebounds_assists_alternate"
+                    "player_points", "player_rebounds", "player_assists", "player_three_pointers_made",  # Standard Props
+                    "player_points_alternate", "player_rebounds_alternate", "player_assists_alternate",  # Alt Props
+                    "player_threes_alternate"  # Alternate 3PTM Props
                 ]),
                 "bookmakers": "fanduel"
             }
