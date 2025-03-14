@@ -6,6 +6,7 @@ from nba_api.stats.static import teams
 
 # API Configuration
 ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds"
+EVENT_ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/odds"
 BALL_DONT_LIE_API_URL = "https://api.balldontlie.io/v1"
 
 # Fetch NBA Games
@@ -38,18 +39,51 @@ def get_nba_games(date):
         st.error(f"❌ Unexpected error fetching games: {e}")
         return []
 
-# Fetch SGP Bets
-def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, confidence_level=None):
-    """Generate optimized Same Game Parlay (SGP) with AI-based filtering and fixed API request."""
+# Fetch Event ID for a Game
+def get_event_id(selected_game):
+    """Retrieve the event ID for a given NBA game."""
     try:
         response = requests.get(
-            f"{ODDS_API_URL}",
+            ODDS_API_URL,
+            params={
+                "apiKey": st.secrets["odds_api_key"],
+                "regions": "us",
+                "markets": "h2h",
+                "bookmakers": "fanduel",
+            }
+        )
+
+        if response.status_code != 200:
+            st.error(f"❌ Error fetching event ID: {response.status_code} - {response.text}")
+            return None
+
+        events_data = response.json()
+        for event in events_data:
+            if event["home_team"] == selected_game["home_team"] and event["away_team"] == selected_game["away_team"]:
+                return event["id"]
+
+        return None
+
+    except Exception as e:
+        st.error(f"❌ Unexpected error fetching event ID: {e}")
+        return None
+
+# Fetch Player Props for a Given Game
+def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, confidence_level=None):
+    """Fetch player props for a Same Game Parlay (SGP) using the correct event ID endpoint."""
+
+    event_id = get_event_id(selected_game)
+    if not event_id:
+        return "🚨 No event ID found for this game. Cannot fetch props."
+
+    try:
+        response = requests.get(
+            EVENT_ODDS_API_URL.format(event_id=event_id),
             params={
                 "apiKey": st.secrets["odds_api_key"],
                 "regions": "us",
                 "markets": "player_points,player_assists,player_rebounds",
-                "bookmakers": "fanduel",
-                "dateFormat": "iso"  # Fixes potential date format issues
+                "bookmakers": "fanduel"
             }
         )
 
@@ -60,48 +94,49 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
         odds_data = response.json()
         best_props = []
 
-        for game in odds_data:
-            if game["home_team"] == selected_game["home_team"] and game["away_team"] == selected_game["away_team"]:
-                for bookmaker in game.get("bookmakers", []):
-                    for market in bookmaker.get("markets", []):
-                        for outcome in market.get("outcomes", []):
-                            price = outcome["price"]
-                            player_name = outcome["name"]
-                            prop_type = market["key"].replace("player_", "").capitalize()
+        fanduel = next((b for b in odds_data.get("bookmakers", []) if b["key"] == "fanduel"), None)
+        if not fanduel:
+            return "🚨 No FanDuel odds available for this game."
 
-                            # Convert sportsbook odds to implied probability
-                            sportsbook_implied_prob = 1 / (1 + (price / 100 if price > 0 else 100 / abs(price)))
+        for market in fanduel.get("markets", []):
+            for outcome in market.get("outcomes", []):
+                price = outcome["price"]
+                player_name = outcome["name"]
+                prop_type = market["key"].replace("player_", "").capitalize()
 
-                            # AI Model Probabilities (Placeholder)
-                            ai_probability = 0.65  # This should be dynamically computed using our models
+                # Convert sportsbook odds to implied probability
+                sportsbook_implied_prob = 1 / (1 + (price / 100 if price > 0 else 100 / abs(price)))
 
-                            # Betting edge calculation
-                            betting_edge = (ai_probability - sportsbook_implied_prob) / sportsbook_implied_prob if sportsbook_implied_prob > 0 else 0
-                            confidence_boost = min(max(betting_edge * 50 + 50, 0), 100)
+                # AI Model Probabilities (Placeholder)
+                ai_probability = 0.65  # This should be dynamically computed using our models
 
-                            # Filter by Confidence Score
-                            if confidence_level:
-                                confidence_mapping = {"High": 80, "Medium": 60, "Low": 40}
-                                if confidence_boost < confidence_mapping[confidence_level]:
-                                    continue
+                # Betting edge calculation
+                betting_edge = (ai_probability - sportsbook_implied_prob) / sportsbook_implied_prob if sportsbook_implied_prob > 0 else 0
+                confidence_boost = min(max(betting_edge * 50 + 50, 0), 100)
 
-                            # Filter by Odds Range
-                            if min_odds is not None and max_odds is not None:
-                                if not (min_odds <= price <= max_odds):
-                                    continue
+                # Filter by Confidence Score
+                if confidence_level:
+                    confidence_mapping = {"High": 80, "Medium": 60, "Low": 40}
+                    if confidence_boost < confidence_mapping[confidence_level]:
+                        continue
 
-                            best_props.append({
-                                "player": player_name,
-                                "prop": prop_type,
-                                "odds": price,
-                                "implied_prob": sportsbook_implied_prob,
-                                "ai_prob": ai_probability,
-                                "confidence_boost": confidence_boost,
-                                "betting_edge": betting_edge
-                            })
+                # Filter by Odds Range
+                if min_odds is not None and max_odds is not None:
+                    if not (min_odds <= price <= max_odds):
+                        continue
+
+                best_props.append({
+                    "player": player_name,
+                    "prop": prop_type,
+                    "odds": price,
+                    "implied_prob": sportsbook_implied_prob,
+                    "ai_prob": ai_probability,
+                    "confidence_boost": confidence_boost,
+                    "betting_edge": betting_edge
+                })
 
         if not best_props:
-            return "No valid props found for this game."
+            return "🚨 No valid props found for this game."
 
         # Select top N props
         selected_props = sorted(best_props, key=lambda x: x["confidence_boost"], reverse=True)[:num_props]
