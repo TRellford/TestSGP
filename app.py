@@ -67,12 +67,12 @@ if menu_option == "Same Game Parlay":
 
         if st.button("Generate SGP Prediction"):
     # Fetch SGP results
-    sgp_results = fetch_sgp_builder(
-        selected_game,
-        num_props=num_props,
-        min_odds=min_odds if filter_mode == "Filter by Odds Range" else None,
-        max_odds=max_odds if filter_mode == "Filter by Odds Range" else None,
-        confidence_level=confidence_level if filter_mode == "Filter by Confidence Score" else None
+        sgp_results = fetch_sgp_builder(
+            selected_game,
+            num_props=num_props,
+            min_odds=min_odds if filter_mode == "Filter by Odds Range" else None,
+            max_odds=max_odds if filter_mode == "Filter by Odds Range" else None,
+            confidence_level=confidence_level if filter_mode == "Filter by Confidence Score" else None
     )
 
     if sgp_results and isinstance(sgp_results, dict) and "selected_props" in sgp_results:
