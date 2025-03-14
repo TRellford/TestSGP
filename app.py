@@ -17,9 +17,8 @@ if menu_option == "Same Game Parlay":
     st.header("🎯 Same Game Parlay (SGP) - One Game Only")
 
     # Game Date Selection
-    date_option = st.radio("Choose Game Date:", ["Today's Games", "Tomorrow's Games"], key="sgp_date")
-    base_date = datetime.date.today()
-    game_date = base_date if date_option == "Today's Games" else base_date + datetime.timedelta(days=1)
+st.subheader(f"📅 Games for Today: {datetime.date.today().strftime('%Y-%m-%d')}")
+game_date = datetime.date.today()
 
     # Fetch Games
     available_games = get_nba_games()
