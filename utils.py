@@ -109,6 +109,20 @@ def fetch_all_props(event_id):
 
     return response.json()  # Store all data in memory
 
+# Assign Risk Level Based on Odds
+def get_risk_level(odds):
+    """Assign risk level and emoji based on betting odds."""
+    if -450 <= odds <= -300:
+        return "Very Safe", "🔵"
+    elif -299 <= odds <= -200:
+        return "Safe", "🟢"
+    elif -199 <= odds <= 100:
+        return "Moderate Risk", "🟡"
+    elif 101 <= odds <= 250:
+        return "High Risk", "🟠"
+    else:
+        return "Very High Risk", "🔴"
+
 def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, confidence_level=None):
     """Fetch player props for Same Game Parlay (SGP) with balanced category selection."""
     if not selected_game or "game_id" not in selected_game:
