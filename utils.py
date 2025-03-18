@@ -9,9 +9,9 @@ ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/basketball_nba/odds"
 EVENT_ODDS_API_URL = "https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/odds"
 BALL_DONT_LIE_API_URL = "https://api.balldontlie.io/v1"
 
-# Cache for API calls to minimize requests
+# Cache for API calls
 CACHE = {}
-CACHE_EXPIRATION = timedelta(minutes=15)
+CACHE_EXPIRATION = timedelta(minutes=15)  # Cache results for 15 minutes
 
 def get_nba_games():
     """Fetch NBA games for today from Balldontlie API, with caching."""
@@ -71,7 +71,7 @@ def get_event_id(selected_game):
         return None
 
 def calculate_parlay_odds(selected_props):
-    """Calculate combined odds for the SGP based on individual prop odds."""
+    """Calculate combined odds for SGP based on individual prop odds."""
     combined_odds = 1.0
     for prop in selected_props:
         odds = prop["odds"]
@@ -95,7 +95,7 @@ def get_risk_level(odds):
         return "Very High Risk", "🔴"
 
 def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, confidence_level=None):
-    """Fetch player props for Same Game Parlay (SGP) with caching and optimized requests."""
+    """Fetch player props for SGP with caching and optimized API calls."""
     if not selected_game or "game_id" not in selected_game:
         return {}
 
@@ -134,42 +134,51 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
             return {}
 
         selected_props = []
-        all_props = []
+        prop_categories = {"Points": [], "Rebounds": [], "Assists": [], "Threes": []}
+
         for market in fanduel["markets"]:
             for outcome in market.get("outcomes", []):
+                prop_name = market["key"].replace("_alternate", "").replace("player_", "").title()
                 odds = outcome["price"]
                 implied_prob = 1 / (1 + abs(odds) / 100) if odds < 0 else odds / (100 + odds)
+                
                 ai_prob = implied_prob * 0.9
                 confidence_boost = round(ai_prob * 100, 2)
                 betting_edge = round(ai_prob - implied_prob, 3)
+
                 risk_level, emoji = get_risk_level(odds)
+
+                insight_reason = f"{outcome['name']} has a strong {prop_name.lower()} trend with {confidence_boost:.0f}% AI confidence."
 
                 prop_data = {
                     "player": outcome["name"],
-                    "prop": market["key"].replace("_alternate", "").replace("player_", "").title(),
+                    "prop": prop_name,
                     "odds": odds,
                     "implied_prob": round(implied_prob, 3),
                     "ai_prob": round(ai_prob, 3),
                     "confidence_boost": confidence_boost,
                     "betting_edge": betting_edge,
                     "risk_level": f"{emoji} {risk_level}",
+                    "why_this_pick": insight_reason,
                     "alt_line": "alternate" in market["key"]
                 }
-                all_props.append(prop_data)
 
-        all_props = sorted(all_props, key=lambda x: x["confidence_boost"], reverse=True)
+                if "Points" in prop_name:
+                    prop_categories["Points"].append(prop_data)
+                elif "Rebounds" in prop_name:
+                    prop_categories["Rebounds"].append(prop_data)
+                elif "Assists" in prop_name:
+                    prop_categories["Assists"].append(prop_data)
+                elif "Threes" in prop_name:
+                    prop_categories["Threes"].append(prop_data)
 
-        if min_odds is not None and max_odds is not None:
-            all_props = [p for p in all_props if min_odds <= p["odds"] <= max_odds]
+        all_props_sorted = sorted(
+            prop_categories["Points"] + prop_categories["Rebounds"] + prop_categories["Assists"] + prop_categories["Threes"],
+            key=lambda x: x["confidence_boost"],
+            reverse=True
+        )
 
-        if confidence_level:
-            all_props = [p for p in all_props if confidence_level[0] <= p["confidence_boost"] <= confidence_level[1]]
-
-        selected_props = all_props[:num_props]
-
-        if not selected_props:
-            return {}
-
+        selected_props = all_props_sorted[:num_props]
         combined_odds = calculate_parlay_odds(selected_props)
 
         CACHE[cache_key] = {"data": {"selected_props": selected_props, "combined_odds": combined_odds}, "timestamp": time.time()}
