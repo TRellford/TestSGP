@@ -61,33 +61,21 @@ if menu_option == "Same Game Parlay":
         show_advanced = st.checkbox("Show Advanced Insights", value=False, key="adv_insights")
 
         if st.button("Generate SGP Prediction"):
-            # Default `sgp_results` to an empty dictionary
-            sgp_results = {}
+            sgp_results = fetch_sgp_builder(
+                selected_game,
+                num_props=num_props,
+                min_odds=min_odds if filter_mode == "Filter by Odds Range" else None,
+                max_odds=max_odds if filter_mode == "Filter by Odds Range" else None,
+                confidence_level=confidence_level if filter_mode == "Filter by Confidence Score" else None
+            )
 
-            try:            
-                sgp_results = fetch_sgp_builder(
-                    selected_game,
-                    num_props=num_props,
-                    min_odds=min_odds if filter_mode == "Filter by Odds Range" else None,
-                    max_odds=max_odds if filter_mode == "Filter by Odds Range" else None,
-                    confidence_level=confidence_level if filter_mode == "Filter by Confidence Score" else None
-                )
-
-                # Ensure `sgp_results` is defined
-                if sgp_results is None:
-                    st.error("🚨 Error: No data returned from fetch_sgp_builder().")
-                    sgp_results = {}
-            
-            except Exception as e:
-                st.error(f"🚨 Exception in fetch_sgp_builder(): {e}")
-                sgp_results = {}
-
-            if "selected_props" in sgp_results and sgp_results["selected_props"]:
+            if sgp_results and "selected_props" in sgp_results:
                 selected_props = sgp_results["selected_props"]
                 df = pd.DataFrame(selected_props)
 
                 column_mapping = {
                     "player": "Player",
+                    "over_under": "Over/Under",
                     "prop": "Prop",
                     "odds": "Odds",
                     "confidence_boost": "Confidence Score",
@@ -96,20 +84,18 @@ if menu_option == "Same Game Parlay":
                 }
                 df.rename(columns=column_mapping, inplace=True)
 
-                # Check if required columns exist
-                required_columns = ["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?"]
-                missing_columns = [col for col in required_columns if col not in df.columns]
-
-                if missing_columns:
-                    st.error(f"🚨 Missing columns: {missing_columns}")
+                if not show_advanced:
+                    df = df[["Player", "Over/Under", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?"]]
                 else:
-                    st.write("### 🎯 **Same Game Parlay Selections**")
-                    st.dataframe(df, use_container_width=True)
+                    df["AI Pick"] = "🔥 AI-Selected" if filter_mode == "Auto-Select Best Props" else "User Picked"
+                    df = df[["Player", "Over/Under", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?", "AI Pick"]]
 
-                    if "combined_odds" in sgp_results:
-                        st.subheader(f"📊 **Final Parlay Odds: {sgp_results['combined_odds']}**")
+                st.write("### 🎯 **Same Game Parlay Selections**")
+                st.dataframe(df, use_container_width=True)
+
+                if "combined_odds" in sgp_results:
+                    st.subheader(f"📊 **Final Parlay Odds: {sgp_results['combined_odds']}**")
             else:
                 st.warning("🚨 No valid props found for this game.")
-
     else:
         st.warning("🚨 No NBA games found for today.")
