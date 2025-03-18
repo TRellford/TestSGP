@@ -20,11 +20,10 @@ def get_nba_games():
         response = requests.get(url, headers=headers, params=params)
 
         if response.status_code != 200:
-            st.error(f"❌ Error fetching games: {response.status_code} - {response.text}")
             return []
 
         games_data = response.json().get("data", [])
-        formatted_games = [
+        return [
             {
                 "home_team": game["home_team"]["full_name"],
                 "away_team": game["visitor_team"]["full_name"],
@@ -33,10 +32,7 @@ def get_nba_games():
             }
             for game in games_data
         ]
-        return formatted_games
-
-    except Exception as e:
-        st.error(f"❌ Unexpected error fetching games: {e}")
+    except Exception:
         return []
 
 # Fetch Event ID for a Game
@@ -54,18 +50,14 @@ def get_event_id(selected_game):
         )
 
         if response.status_code != 200:
-            st.error(f"❌ Error fetching event ID: {response.status_code} - {response.text}")
             return None
 
         events_data = response.json()
         for event in events_data:
             if event["home_team"] == selected_game["home_team"] and event["away_team"] == selected_game["away_team"]:
                 return event["id"]
-
         return None
-
-    except Exception as e:
-        st.error(f"❌ Unexpected error fetching event ID: {e}")
+    except Exception:
         return None
 
 # Calculate Parlay Odds
@@ -77,8 +69,7 @@ def calculate_parlay_odds(selected_props):
         decimal_odds = (1 + (odds / 100)) if odds > 0 else (1 + (100 / abs(odds)))
         combined_odds *= decimal_odds
 
-    final_american_odds = int((combined_odds - 1) * 100) if combined_odds > 2 else int(-100 / (combined_odds - 1))
-    return final_american_odds
+    return int((combined_odds - 1) * 100) if combined_odds > 2 else int(-100 / (combined_odds - 1))
 
 # Assign Risk Level Based on Odds
 def get_risk_level(odds):
@@ -98,15 +89,11 @@ def get_risk_level(odds):
 def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, confidence_level=None):
     """Fetch player props for Same Game Parlay (SGP) with balanced category selection."""
     
-    st.write(f"🔍 DEBUG: Running `fetch_sgp_builder()` with game: {selected_game}")
-    
     if not selected_game or "game_id" not in selected_game:
-        st.error("🚨 Error: Invalid game selected. No game ID found.")
         return {}
 
     event_id = get_event_id(selected_game)
     if not event_id:
-        st.error("🚨 No event ID found for this game.")
         return {}
 
     try:
@@ -117,7 +104,7 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
             "player_points_rebounds", "player_points_assists", "player_rebounds_assists", "player_points_rebounds_assists",
             "player_points_rebounds_alternate", "player_points_assists_alternate", "player_rebounds_assists_alternate",
             "player_points_rebounds_assists_alternate"
-    ]
+        ]
 
         api_url = EVENT_ODDS_API_URL.format(event_id=event_id)
         params = {
@@ -129,14 +116,12 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
         response = requests.get(api_url, params=params)
 
         if response.status_code != 200:
-            st.error(f"🚨 Error fetching props: {response.status_code} - {response.text}")
             return {}
 
         # Extract props from FanDuel
         odds_data = response.json()
         fanduel = next((b for b in odds_data.get("bookmakers", []) if b["key"] == "fanduel"), None)
         if not fanduel or not fanduel.get("markets"):
-            st.warning("🚨 No props found in API response.")
             return {}
 
         selected_props = []
@@ -188,13 +173,11 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
         selected_props = all_props_sorted[:num_props]
 
         if not selected_props:
-            st.warning("🚨 No valid props found after filtering.")
             return {}
 
         combined_odds = calculate_parlay_odds(selected_props)
 
         return {"selected_props": selected_props, "combined_odds": combined_odds}
 
-    except Exception as e:
-        st.error(f"🚨 Exception in fetch_sgp_builder(): {e}")
+    except Exception:
         return {}
