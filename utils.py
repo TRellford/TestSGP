@@ -1,4 +1,3 @@
-
 import requests
 import streamlit as st
 from datetime import datetime
@@ -87,7 +86,7 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
             "player_points_alternate", "player_rebounds_alternate", "player_assists_alternate", "player_threes_alternate"
         ]
 
-       api_url = f"{ODDS_API_URL}?apiKey={st.secrets['odds_api_key']}&regions=us&markets=player_points,player_rebounds,player_assists,player_threes&bookmakers=fanduel"
+api_url = f"{ODDS_API_URL}?apiKey={st.secrets['odds_api_key']}&regions=us&markets=player_points,player_rebounds,player_assists,player_threes&bookmakers=fanduel"
         params = {
             "apiKey": st.secrets["odds_api_key"],
             "regions": "us",
