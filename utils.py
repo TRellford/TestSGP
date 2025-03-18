@@ -143,7 +143,7 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
                 insight_reason = f"{outcome['name']} has a strong {prop_name.lower()} trend with {confidence_boost:.0f}% AI confidence."
 
                 prop_data = {
-                    "player": outcome.get("participant", "Unknown Player"),  # ✅ Ensure correct player name
+                    "player": outcome.get("description"),  # ✅ Ensure correct player name
                     "prop": prop_name,
                     "odds": odds,
                     "implied_prob": round(implied_prob, 3),
