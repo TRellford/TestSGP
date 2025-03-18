@@ -77,29 +77,26 @@ if menu_option == "Same Game Parlay":
                 selected_props = sgp_results["selected_props"]
                 df = pd.DataFrame(selected_props)
 
-                column_mapping = {
-                    "player": "Player",
-                    "prop": "Prop",
-                    "odds": "Odds",
-                    "confidence_boost": "Confidence Score",
-                    "risk_level": "Risk Level",
-                    "why_this_pick": "Why This Pick?"
-                }
-                df.rename(columns=column_mapping, inplace=True)
+               column_mapping = {
+                                "player": "Player",
+                                "prop": "Prop",
+                                "odds": "Odds",
+                                "confidence_boost": "Confidence Score",
+                                "risk_level": "Risk Level",
+                                "why_this_pick": "Why This Pick?",
+                                "ai_pick": "AI Pick"
+}
 
-                if not show_advanced:
-                    df = df[["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?"]]
-                else:
-                    df["AI Pick"] = "🔥 AI-Selected" if filter_mode == "Auto-Select Best Props" else "User Picked"
-                    df = df[["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?", "AI Pick"]]
+# Rename only existing columns
+existing_columns = [col for col in column_mapping.keys() if col in df.columns]
+df.rename(columns={col: column_mapping[col] for col in existing_columns}, inplace=True)
 
-                st.write("### 🎯 **Same Game Parlay Selections**")
-                st.dataframe(df, use_container_width=True)
+# Fill missing columns with default values
+for col in column_mapping.values():
+    if col not in df.columns:
+        df[col] = "N/A"
 
-                if "combined_odds" in sgp_results:
-                    st.subheader(f"📊 **Final Parlay Odds: {sgp_results['combined_odds']}**")
-            else:
-                st.warning("🚨 No valid props found for this game.")
+# Final column selection
+required_columns = ["Player", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?", "AI Pick"]
+df = df[required_columns]
 
-    else:
-        st.warning("🚨 No NBA games found for today.")
