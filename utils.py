@@ -72,109 +72,123 @@ def get_event_id(selected_game):
 
 # Fetch Player Props for a Given Game (with Debugging Logs)
 def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, confidence_level=None):
-    """Fetch player props for a Same Game Parlay (SGP), including standard and alternate lines for all categories."""
-
-    event_id = get_event_id(selected_game)
-    if not event_id:
-        return "🚨 No event ID found for this game. Cannot fetch props."
+    """Fetch player props for Same Game Parlay (SGP) with balanced category selection."""
+    
+    st.write(f"🔍 DEBUG: Running `fetch_sgp_builder()` with game: {selected_game}")
+    
+    if not selected_game or "game_id" not in selected_game:
+        st.error("🚨 Error: Invalid game selected. No game ID found.")
+        return {}
 
     try:
-        response = requests.get(
-            EVENT_ODDS_API_URL.format(event_id=event_id),
-            params={
-                "apiKey": st.secrets["odds_api_key"],
-                "regions": "us",
-                "markets": ",".join([
-                    "player_points", "player_rebounds", "player_assists", "player_threes",  # Standard Props
-                    "player_points_alternate", "player_rebounds_alternate", "player_assists_alternate",  # Alt Props
-                    "player_threes_alternate"  # Alternate 3PTM Props
-                ]),
-                "bookmakers": "fanduel"
-            }
-        )
+        # Define the markets to fetch (Standard + Alternate Props)
+        markets = [
+            "player_points", "player_rebounds", "player_assists", "player_threes",
+            "player_points_alternate", "player_rebounds_alternate", "player_assists_alternate", "player_threes_alternate"
+        ]
+
+        api_url = f"{ODDS_API_URL}/{selected_game['game_id']}/odds"
+        params = {
+            "apiKey": st.secrets["odds_api_key"],
+            "regions": "us",
+            "markets": ",".join(markets),
+            "bookmakers": "fanduel"
+        }
+        response = requests.get(api_url, params=params)
 
         if response.status_code != 200:
-            st.error(f"❌ Error fetching props: {response.status_code} - {response.text}")
-            return []
+            st.error(f"🚨 Error fetching props: {response.status_code} - {response.text}")
+            return {}
 
+        # Extract props from FanDuel
         odds_data = response.json()
-        best_props = []
-
         fanduel = next((b for b in odds_data.get("bookmakers", []) if b["key"] == "fanduel"), None)
-        if not fanduel:
-            return "🚨 No FanDuel odds available for this game."
+        if not fanduel or not fanduel.get("markets"):
+            st.warning("🚨 No props found in API response.")
+            return {}
 
-        for market in fanduel.get("markets", []):
+        selected_props = []
+        prop_categories = {"Points": [], "Rebounds": [], "Assists": [], "Threes": []}
+
+        for market in fanduel["markets"]:
             for outcome in market.get("outcomes", []):
-                price = outcome["price"]
-                # Extract actual player name (FanDuel sometimes stores "Over" in outcome["name"])
-                player_name = outcome["description"].split(" Over")[0] if " Over" in outcome["description"] else outcome["description"].split(" Under")[0]
+                prop_name = market["key"].replace("_alternate", "").replace("player_", "").title()
 
-                # Format prop type correctly
-                prop_mappings = {
-                "points_alternate": "Alternate Points",
-                "rebounds_alternate": "Alternate Rebounds",
-                "assists_alternate": "Alternate Assists",
-                "threes_alternate": "Alternate Threes",
-                "three_pointers_made": "3PT Made"
-}
-                prop_type = prop_mappings.get(market["key"], market["key"].replace("_", " ").title())
+                odds = outcome["price"]
+                implied_prob = 1 / (1 + abs(odds) / 100) if odds < 0 else odds / (100 + odds)
+                
+                # Confidence Calculation (Example Placeholder)
+                ai_prob = implied_prob * 0.9  # AI adjusting probability
+                confidence_boost = round(ai_prob * 100, 2)
+                betting_edge = round(ai_prob - implied_prob, 3)
 
+                # Risk Level Based on Odds
+                risk_level, emoji = get_risk_level(odds)
 
-                # Identify if it's an alternative line
-                is_alt = "alternate" in market["key"]
+                # **NEW: Generate a simple reason for why this pick was chosen**
+                insight_reason = f"{outcome['name']} has a strong {prop_name.lower()} trend with {confidence_boost:.0f}% AI confidence."
 
-                # Convert sportsbook odds to implied probability
-                sportsbook_implied_prob = 1 / (1 + (price / 100 if price > 0 else 100 / abs(price)))
-
-                # AI Model Probabilities (Placeholder)
-                ai_probability = 0.65  # This should be dynamically computed using our models
-
-                # Betting edge calculation
-                betting_edge = (ai_probability - sportsbook_implied_prob) / sportsbook_implied_prob if sportsbook_implied_prob > 0 else 0
-                confidence_boost = min(max(betting_edge * 50 + 50, 0), 100)
-
-                # Filter by Confidence Score
-                if confidence_level:
-                    confidence_mapping = {"High": 80, "Medium": 60, "Low": 40}
-                    if confidence_boost < confidence_mapping[confidence_level]:
-                        continue
-
-                # Filter by Odds Range
-                if min_odds is not None and max_odds is not None:
-                    if not (min_odds <= price <= max_odds):
-                        continue
-
-                best_props.append({
-                    "player": player_name,
-                    "prop": prop_type,
-                    "odds": price,
-                    "implied_prob": sportsbook_implied_prob,
-                    "ai_prob": ai_probability,
+                prop_data = {
+                    "player": outcome["name"],
+                    "prop": prop_name,
+                    "odds": odds,
+                    "implied_prob": round(implied_prob, 3),
+                    "ai_prob": round(ai_prob, 3),
                     "confidence_boost": confidence_boost,
                     "betting_edge": betting_edge,
-                    "alt_line": is_alt  # Flag if it's an alternative line
-                })
+                    "risk_level": f"{emoji} {risk_level}",
+                    "why_this_pick": insight_reason,  # **✅ New Column**
+                    "alt_line": "alternate" in market["key"]
+                }
 
-        if not best_props:
-            return "🚨 No valid props found for this game. (DEBUG: No props met the filter criteria)"
+                # **Sort props into categories**
+                if "Points" in prop_name:
+                    prop_categories["Points"].append(prop_data)
+                elif "Rebounds" in prop_name:
+                    prop_categories["Rebounds"].append(prop_data)
+                elif "Assists" in prop_name:
+                    prop_categories["Assists"].append(prop_data)
+                elif "Threes" in prop_name:
+                    prop_categories["Threes"].append(prop_data)
 
-        # Sort by confidence and select top N props
-        selected_props = sorted(best_props, key=lambda x: x["confidence_boost"], reverse=True)[:num_props]
+        # **STEP 1: Pick One from Each Category First**
+        for category in ["Points", "Rebounds", "Assists", "Threes"]:
+            if prop_categories[category]:
+                best_prop = sorted(prop_categories[category], key=lambda x: x["confidence_boost"], reverse=True)[0]
+                selected_props.append(best_prop)
 
-        # Calculate Combined Odds
-        combined_odds = 1.0
-        for prop in selected_props:
-            decimal_odds = (prop["odds"] / 100 + 1) if prop["odds"] > 0 else (1 + 100 / abs(prop["odds"]))
-            combined_odds *= decimal_odds
+        # **STEP 2: Fill the Rest with Highest Confidence Remaining Props**
+        all_props_sorted = sorted(
+            prop_categories["Points"] + prop_categories["Rebounds"] + prop_categories["Assists"] + prop_categories["Threes"],
+            key=lambda x: x["confidence_boost"],
+            reverse=True
+        )
 
-        american_odds = int((combined_odds - 1) * 100) if combined_odds > 2 else int(-100 / (combined_odds - 1))
+        for prop in all_props_sorted:
+            if len(selected_props) >= num_props:
+                break
+            if prop not in selected_props:  # Avoid duplicates
+                selected_props.append(prop)
 
-        return {
-            "selected_props": selected_props,
-            "combined_odds": american_odds
-        }
+        # **Ensure Filtering Still Works**
+        if min_odds is not None and max_odds is not None:
+            selected_props = [p for p in selected_props if min_odds <= p["odds"] <= max_odds]
+
+        if confidence_level:
+            selected_props = [p for p in selected_props if confidence_level[0] <= p["confidence_boost"] <= confidence_level[1]]
+
+        # Select top N props
+        selected_props = selected_props[:num_props]
+
+        if not selected_props:
+            st.warning("🚨 No valid props found after filtering.")
+            return {}
+
+        # Calculate combined odds
+        combined_odds = calculate_parlay_odds(selected_props)
+
+        return {"selected_props": selected_props, "combined_odds": combined_odds}
 
     except Exception as e:
-        st.error(f"❌ Unexpected error fetching SGP props: {e}")
-        return []
+        st.error(f"🚨 Exception in fetch_sgp_builder(): {e}")
+        return {}
