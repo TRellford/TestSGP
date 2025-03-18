@@ -77,7 +77,7 @@ if menu_option == "Same Game Parlay":
                 selected_props = sgp_results["selected_props"]
                 df = pd.DataFrame(selected_props)
 
-               column_mapping = {
+            column_mapping = {
                                 "player": "Player",
                                 "prop": "Prop",
                                 "odds": "Odds",
