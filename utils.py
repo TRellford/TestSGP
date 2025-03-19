@@ -150,64 +150,72 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
         }
 
         for market in fanduel["markets"]:
-            for outcome in market.get("outcomes", []):
-                prop_name = market["key"].replace("_alternate", "").replace("player_", "").title()
-                
-                # Extract Over/Under
-                over_under = "Over" if "Over" in outcome["name"] else "Under"
+    for outcome in market.get("outcomes", []):
+        # **Extract the player name properly**
+        player_name = outcome.get("description", "Unknown Player")  # Some APIs use "description" instead of "name"
 
-                # Convert Decimal Odds to American Odds
-                odds = outcome["price"]
-                if odds >= 2.0:
-                    odds = int((odds - 1) * 100)
-                else:
-                    odds = int(-100 / (odds - 1))
+        # Extract Over/Under
+        if "Over" in outcome["name"]:
+            over_under = "Over"
+        elif "Under" in outcome["name"]:
+            over_under = "Under"
+        else:
+            over_under = "N/A"
 
-                # Calculate implied probability
-                implied_prob = 1 / (1 + abs(odds) / 100) if odds < 0 else odds / (100 + odds)
+        # Convert Decimal Odds to American Odds
+        odds = outcome["price"]
+        if odds >= 2.0:
+            odds = int((odds - 1) * 100)
+        else:
+            odds = int(-100 / (odds - 1))
 
-                # AI Adjustments
-                ai_prob = implied_prob * 1.1  # Giving AI a slight adjustment factor
-                confidence_boost = round(ai_prob * 100, 2)
-                betting_edge = round(ai_prob - implied_prob, 3)
+        odds = outcome["price"]
 
-                # Assign Risk Level
-                risk_level, emoji = get_risk_level(odds)
+        # Calculate implied probability
+        implied_prob = 1 / (1 + abs(odds) / 100) if odds < 0 else odds / (100 + odds)
 
-                # Generate Insight for Pick
-                insight_reason = f"{outcome['name']} has a strong {prop_name.lower()} trend with {confidence_boost:.0f}% AI confidence."
+        # AI Adjustments
+        ai_prob = implied_prob * 1.1  # Slight adjustment for AI predictions
+        confidence_boost = min(round(ai_prob * 100, 2), 100)
+        betting_edge = round(ai_prob - implied_prob, 3)
 
-                prop_data = {
-                    "player": outcome["name"],  # Correct player extraction
-                    "over_under": over_under,  # Over/Under Column
-                    "prop": prop_name,
-                    "odds": odds,
-                    "implied_prob": round(implied_prob, 3),
-                    "ai_prob": round(ai_prob, 3),
-                    "confidence_boost": confidence_boost,
-                    "betting_edge": betting_edge,
-                    "risk_level": f"{emoji} {risk_level}",
-                    "why_this_pick": insight_reason,
-                    "alt_line": "alternate" in market["key"]
-                }
-                
-                # **Sort props into respective categories, including combos**
-                if "Points" == prop_name:
-                    prop_categories["Points"].append(prop_data)
-                elif "Rebounds" == prop_name:
-                    prop_categories["Rebounds"].append(prop_data)
-                elif "Assists" == prop_name:
-                    prop_categories["Assists"].append(prop_data)
-                elif "Threes" == prop_name:
-                    prop_categories["Threes"].append(prop_data)
-                elif "Points Rebounds" in prop_name:
-                    prop_categories["Points + Rebounds"].append(prop_data)
-                elif "Points Assists" in prop_name:
-                    prop_categories["Points + Assists"].append(prop_data)
-                elif "Rebounds Assists" in prop_name:
-                    prop_categories["Rebounds + Assists"].append(prop_data)
-                elif "Points Rebounds Assists" in prop_name:
-                    prop_categories["P + R + A"].append(prop_data)
+        # Assign Risk Level
+        risk_level, emoji = get_risk_level(odds)
+
+        # Generate Insight for Pick
+        insight_reason = f"{player_name} has a strong {market['key'].replace('_alternate', '').replace('player_', '').title()} trend with {confidence_boost:.0f}% AI confidence."
+
+        prop_data = {
+            "player": player_name,  # **Fixed: Now properly extracting player names**
+            "over_under": over_under,  # Over/Under Column
+            "prop": market["key"].replace("_alternate", "").replace("player_", "").title(),
+            "odds": odds,
+            "implied_prob": round(implied_prob, 3),
+            "ai_prob": round(ai_prob, 3),
+            "confidence_boost": confidence_boost,
+            "betting_edge": betting_edge,
+            "risk_level": f"{emoji} {risk_level}",
+            "why_this_pick": insight_reason,
+            "alt_line": "alternate" in market["key"]
+        }
+
+        # **Sort props into respective categories, including combos**
+        if "Points" == prop_data["prop"]:
+            prop_categories["Points"].append(prop_data)
+        elif "Rebounds" == prop_data["prop"]:
+            prop_categories["Rebounds"].append(prop_data)
+        elif "Assists" == prop_data["prop"]:
+            prop_categories["Assists"].append(prop_data)
+        elif "Threes" == prop_data["prop"]:
+            prop_categories["Threes"].append(prop_data)
+        elif "Points Rebounds" in prop_data["prop"]:
+            prop_categories["Points + Rebounds"].append(prop_data)
+        elif "Points Assists" in prop_data["prop"]:
+            prop_categories["Points + Assists"].append(prop_data)
+        elif "Rebounds Assists" in prop_data["prop"]:
+            prop_categories["Rebounds + Assists"].append(prop_data)
+        elif "Points Rebounds Assists" in prop_data["prop"]:
+            prop_categories["P + R + A"].append(prop_data)
 
         # **Step 1: Pick One from Each Category First (if available)**
         for category in ["Points", "Rebounds", "Assists", "Threes", "Points + Rebounds", "Points + Assists", "Rebounds + Assists", "P + R + A"]:
