@@ -150,9 +150,9 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
         }
 
         for market in fanduel["markets"]:
-        for outcome in market.get("outcomes", []):
+            for outcome in market.get("outcomes", []):
         # **Extract the player name properly**
-        player_name = outcome.get("description", "Unknown Player")  # Some APIs use "description" instead of "name"
+                player_name = outcome.get("description", "Unknown Player")  # Some APIs use "description" instead of "name"
 
         # Extract Over/Under
         if "Over" in outcome["name"]:
