@@ -13,22 +13,39 @@ BALL_DONT_LIE_API_URL = "https://api.balldontlie.io/v1"
 CACHE = {}
 CACHE_EXPIRATION = timedelta(minutes=15)  # Cache results for 15 minutes
 
-# **NEW FUNCTION TO REDUCE API CALLS**
 def fetch_all_props(event_id):
-    """Fetch ALL player props in ONE call to reduce API usage."""
-    api_url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/events/{event_id}/odds"
+    """Fetch ALL player props (standard, alternate, and combined stats) in ONE call to reduce API usage."""
+    
+    cache_key = f"props_{event_id}"
+    if cache_key in CACHE and time.time() - CACHE[cache_key]["timestamp"] < CACHE_EXPIRATION.total_seconds():
+        return CACHE[cache_key]["data"]
+
+    api_url = EVENT_ODDS_API_URL.format(event_id=event_id)
     params = {
         "apiKey": st.secrets["odds_api_key"],
         "regions": "us",
-        "markets": "player_points,player_rebounds,player_assists,player_threes",
+        "markets": "player_points,player_rebounds,player_assists,player_threes,"
+                   "player_points_alternate,player_rebounds_alternate,player_assists_alternate,player_threes_alternate,"
+                   "player_points_rebounds,player_points_assists,player_rebounds_assists,player_points_rebounds_assists",
         "bookmakers": "fanduel"
     }
 
-    response = requests.get(api_url, params=params)
-    if response.status_code != 200:
-        return {}
+    try:
+        response = requests.get(api_url, params=params)
+        if response.status_code != 200:
+            st.error(f"🚨 Error fetching props: {response.status_code} - {response.text}")
+            return {}
 
-    return response.json()  # Store all data in memory
+        data = response.json()
+        
+        # **Cache the response to minimize API calls**
+        CACHE[cache_key] = {"data": data, "timestamp": time.time()}
+        
+        return data
+
+    except Exception as e:
+        st.error(f"🚨 Exception in fetch_all_props(): {e}")
+        return {}
 
 def get_nba_games():
     """Fetch NBA games for today from Balldontlie API, with caching."""
@@ -91,24 +108,6 @@ def get_event_id(selected_game):
         st.error(f"❌ Unexpected error fetching event ID: {e}")
         return None
 
-def fetch_all_props(event_id):
-    """Fetch ALL player props in ONE call to reduce API usage."""
-    api_url = EVENT_ODDS_API_URL.format(event_id=event_id)
-    params = {
-        "apiKey": st.secrets["odds_api_key"],
-        "regions": "us",
-        "markets": "player_points,player_rebounds,player_assists,player_threes,"
-                   "player_points_alternate,player_rebounds_alternate,player_assists_alternate,player_threes_alternate,"
-                   "player_points_rebounds,player_points_assists,player_rebounds_assists,player_points_rebounds_assists",
-        "bookmakers": "fanduel"
-    }
-
-    response = requests.get(api_url, params=params)
-    if response.status_code != 200:
-        return {}
-
-    return response.json()  # Store all data in memory
-
 # Assign Risk Level Based on Odds
 def get_risk_level(odds):
     """Assign risk level and emoji based on betting odds."""
@@ -149,42 +148,54 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
         prop_categories = {"Points": [], "Rebounds": [], "Assists": [], "Threes": []}
 
         for market in fanduel["markets"]:
-            for outcome in market.get("outcomes", []):
-                prop_name = market["key"].replace("_alternate", "").replace("player_", "").title()
-                over_under = "Over" if "Over" in outcome["name"] else "Under"
-                
-                odds = outcome["price"]
-                implied_prob = 1 / (1 + abs(odds) / 100) if odds < 0 else odds / (100 + odds)
-                
-                ai_prob = implied_prob * 0.9  # AI adjusting probability
-                confidence_boost = round(ai_prob * 100, 2)
-                betting_edge = round(ai_prob - implied_prob, 3)
+    for outcome in market.get("outcomes", []):
+        prop_name = market["key"].replace("_alternate", "").replace("player_", "").title()
+        
+        # **Correct Over/Under Assignment**
+        over_under = "Over" if "over" in outcome["name"].lower() else "Under" if "under" in outcome["name"].lower() else "Unknown"
 
-                risk_level, emoji = get_risk_level(odds)
+        odds = outcome["price"]
+        
+        # **Convert Decimal Odds to American Odds (If Needed)**
+        if odds >= 2.0:
+            odds = int((odds - 1) * 100)  # Convert Decimal to American (+ odds)
+        else:
+            odds = int(-100 / (odds - 1))  # Convert Decimal to American (- odds)
 
-                insight_reason = f"{outcome['name']} has a strong {prop_name.lower()} trend with {confidence_boost:.0f}% AI confidence."
+        implied_prob = 1 / (1 + abs(odds) / 100) if odds < 0 else odds / (100 + odds)
+        
+        ai_prob = implied_prob * 1.1  # Increased weight for AI calculation
+        confidence_boost = round(ai_prob * 100, 2)  # Convert to percentage format
+        betting_edge = round(ai_prob - implied_prob, 3)
 
-                prop_data = {
-                    "player": outcome["name"].replace(" Over", "").replace(" Under", ""),
-                    "over_under": over_under,
-                    "prop": prop_name,
-                    "odds": odds,
-                    "implied_prob": round(implied_prob, 3),
-                    "ai_prob": round(ai_prob, 3),
-                    "confidence_boost": confidence_boost,
-                    "betting_edge": betting_edge,
-                    "risk_level": f"{emoji} {risk_level}",
-                    "why_this_pick": insight_reason
-                }
+        risk_level, emoji = get_risk_level(odds)
 
-                if "Points" in prop_name:
-                    prop_categories["Points"].append(prop_data)
-                elif "Rebounds" in prop_name:
-                    prop_categories["Rebounds"].append(prop_data)
-                elif "Assists" in prop_name:
-                    prop_categories["Assists"].append(prop_data)
-                elif "Threes" in prop_name:
-                    prop_categories["Threes"].append(prop_data)
+        insight_reason = f"{outcome['name']} has a strong {prop_name.lower()} trend with {confidence_boost:.0f}% AI confidence."
+
+        # **✅ Define `prop_data` Correctly**
+        prop_data = {
+            "player": outcome["name"],  # Corrected Player Name Extraction
+            "prop": prop_name,
+            "odds": odds,  # Correctly placed inside dictionary
+            "over_under": over_under,  # ✅ Fixed Over/Under Column
+            "implied_prob": round(implied_prob, 3),
+            "ai_prob": round(ai_prob, 3),
+            "confidence_boost": confidence_boost,
+            "betting_edge": betting_edge,
+            "risk_level": f"{emoji} {risk_level}",
+            "why_this_pick": insight_reason,
+            "alt_line": "alternate" in market["key"]
+        }
+
+        # **Sort props into categories**
+        if "Points" in prop_name:
+            prop_categories["Points"].append(prop_data)
+        elif "Rebounds" in prop_name:
+            prop_categories["Rebounds"].append(prop_data)
+        elif "Assists" in prop_name:
+            prop_categories["Assists"].append(prop_data)
+        elif "Threes" in prop_name:
+            prop_categories["Threes"].append(prop_data)
 
         for category in ["Points", "Rebounds", "Assists", "Threes"]:
             if prop_categories[category]:
