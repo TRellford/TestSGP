@@ -208,13 +208,12 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
             st.warning("🚨 No valid props found after filtering.")
             return {}
 
-        # **Cache the result**
         cache_key = f"props_{event_id}"
         CACHE[cache_key] = {"data": {"selected_props": selected_props}, "timestamp": time.time()}
 
         return {"selected_props": selected_props}
 
     except Exception as e:
-            st.error(f"🚨 Exception in fetch_sgp_builder(): {e}")
+        st.error(f"🚨 Exception in fetch_sgp_builder(): {e}")  # Dedent this line
 
-        return {}
+        return {}  # Dedent this line as we
