@@ -216,4 +216,4 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
     except Exception as e:
         st.error(f"🚨 Exception in fetch_sgp_builder(): {e}")  # Dedent this line
 
-        return {}  # Dedent this line as we
+    return {}  # Dedent this line as we
