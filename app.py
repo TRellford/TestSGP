@@ -77,7 +77,7 @@ if menu_option == "Same Game Parlay":
                     "player": "Player",
                     "over_under": "Over/Under",
                     "prop": "Prop",
-                    "line": "Line",  # NEW COLUMN for displaying prop lines
+                    "line": "Line",
                     "odds": "Odds",
                     "confidence_boost": "Confidence Score",
                     "risk_level": "Risk Level",
@@ -91,8 +91,10 @@ if menu_option == "Same Game Parlay":
                 st.write("### 🎯 **Same Game Parlay Selections**")
                 st.dataframe(df, use_container_width=True)
 
-                if "combined_odds" in sgp_results:
-                    st.subheader(f"📊 **Final Parlay Odds: {sgp_results['combined_odds']}**")
+                # Display parlay odds
+                if "parlay_odds" in sgp_results:
+                    parlay_odds = sgp_results["parlay_odds"]
+                    st.subheader(f"📊 **Final Parlay Odds: +{parlay_odds}**")
             else:
                 st.warning("🚨 No valid props found for this game.")
     else:
