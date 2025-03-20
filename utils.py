@@ -93,7 +93,7 @@ def get_event_id(selected_game):
             if event["home_team"] == selected_game["home_team"] and event["away_team"] == selected_game["away_team"]:
                 CACHE.setdefault("event_id", {})[selected_game["game_id"]] = event["id"]
                 return event["id"]
-        st.warning(f"⚠️ No matching event found for {selected_game['home_team']} vs {selected_game['away_team']}")
+        st.warning(f"基本的⚠️ No matching event found for {selected_game['home_team']} vs {selected_game['away_team']}")
         return None
     except Exception as e:
         st.error(f"❌ Unexpected error fetching event ID: {e}")
@@ -229,26 +229,36 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
 
     # **Filter function**
     def satisfies_filters(prop):
-        if min_odds is not None and (prop["odds"] < min_odds or prop["odds"] > max_odds):
+        if min_odds is not None and prop["odds"] < min_odds:
             return False
-        if confidence_level is not None and (prop["confidence_boost"] < confidence_level[0] or prop["confidence_boost"] > confidence_level[1]):
+        if max_odds is not None and prop["odds"] > max_odds:
+            return False
+        if confidence_level and not (confidence_level[0] <= prop["confidence_boost"] <= confidence_level[1]):
             return False
         return True
 
     # **Select props**
     selected_props = []
-    # Step 1: Try to select one prop from each category
+
+    # Step 1: Select one prop from each category if available
     for category in prop_categories:
         category_props = [p for p in prop_categories[category] if satisfies_filters(p)]
         if category_props:
             best_prop = max(category_props, key=lambda x: x["confidence_boost"])
             selected_props.append(best_prop)
 
-    # Step 2: Fill remaining slots with highest confidence props
-    all_filtered_props = [p for cat in prop_categories.values() for p in cat if satisfies_filters(p) and p not in selected_props]
+    # Step 2: Fill remaining slots with highest-confidence props
+    all_filtered_props = [
+        p for cat in prop_categories.values()
+        for p in cat if satisfies_filters(p) and p not in selected_props
+    ]
     all_filtered_props_sorted = sorted(all_filtered_props, key=lambda x: x["confidence_boost"], reverse=True)
+
     while len(selected_props) < num_props and all_filtered_props_sorted:
         selected_props.append(all_filtered_props_sorted.pop(0))
+
+    # Step 3: Limit to the requested number of props
+    selected_props = sorted(selected_props, key=lambda x: x["confidence_boost"], reverse=True)[:num_props]
 
     # **Handle case where no props are selected**
     if not selected_props:
