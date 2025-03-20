@@ -77,6 +77,7 @@ if menu_option == "Same Game Parlay":
                     "player": "Player",
                     "over_under": "Over/Under",
                     "prop": "Prop",
+                    "line": "Line",  # NEW COLUMN for displaying prop lines
                     "odds": "Odds",
                     "confidence_boost": "Confidence Score",
                     "risk_level": "Risk Level",
@@ -85,10 +86,7 @@ if menu_option == "Same Game Parlay":
                 df.rename(columns=column_mapping, inplace=True)
 
                 if not show_advanced:
-                    df = df[["Player", "Over/Under", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?"]]
-                else:
-                    df["AI Pick"] = "🔥 AI-Selected" if filter_mode == "Auto-Select Best Props" else "User Picked"
-                    df = df[["Player", "Over/Under", "Prop", "Odds", "Confidence Score", "Risk Level", "Why This Pick?", "AI Pick"]]
+                    df = df[["Player", "Over/Under", "Prop", "Line", "Odds", "Confidence Score", "Risk Level", "Why This Pick?"]]
 
                 st.write("### 🎯 **Same Game Parlay Selections**")
                 st.dataframe(df, use_container_width=True)
