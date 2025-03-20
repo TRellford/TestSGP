@@ -207,7 +207,7 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
         if not selected_props:
             st.warning("🚨 No valid props found after filtering.")
             return {}
-
+    try:
         cache_key = f"props_{event_id}"
         CACHE[cache_key] = {"data": {"selected_props": selected_props}, "timestamp": time.time()}
 
