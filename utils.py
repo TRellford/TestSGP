@@ -35,8 +35,6 @@ def get_nba_games():
     if "games" in CACHE and time.time() - CACHE["games"]["timestamp"] < CACHE_EXPIRATION.total_seconds():
         return CACHE["games"]["data"]
 
-   –
-
     try:
         url = f"{BALL_DONT_LIE_API_URL}/games"
         headers = {"Authorization": st.secrets["balldontlie_api_key"]}
