@@ -27,9 +27,6 @@ category_map = {
 def get_nba_games():
     """
     Fetch NBA games for today from the Balldontlie API with caching.
-
-    Returns:
-        list: A list of dictionaries containing game details (home_team, away_team, game_id, date).
     """
     today = datetime.today().strftime("%Y-%m-%d")
     if "games" in CACHE and time.time() - CACHE["games"]["timestamp"] < CACHE_EXPIRATION.total_seconds():
@@ -64,12 +61,6 @@ def get_nba_games():
 def get_event_id(selected_game):
     """
     Retrieve the event ID from The Odds API for a given NBA game with caching.
-
-    Args:
-        selected_game (dict): Dictionary containing game details (home_team, away_team, game_id).
-
-    Returns:
-        str or None: The event ID if found, None otherwise.
     """
     if "event_id" in CACHE and selected_game["game_id"] in CACHE["event_id"]:
         return CACHE["event_id"][selected_game["game_id"]]
@@ -93,7 +84,7 @@ def get_event_id(selected_game):
             if event["home_team"] == selected_game["home_team"] and event["away_team"] == selected_game["away_team"]:
                 CACHE.setdefault("event_id", {})[selected_game["game_id"]] = event["id"]
                 return event["id"]
-        st.warning(f"基本的⚠️ No matching event found for {selected_game['home_team']} vs {selected_game['away_team']}")
+        st.warning(f"⚠️ No matching event found for {selected_game['home_team']} vs {selected_game['away_team']}")
         return None
     except Exception as e:
         st.error(f"❌ Unexpected error fetching event ID: {e}")
@@ -102,12 +93,6 @@ def get_event_id(selected_game):
 def fetch_all_props(event_id):
     """
     Fetch all player props for a game from The Odds API in a single call with caching.
-
-    Args:
-        event_id (str): The event ID from The Odds API.
-
-    Returns:
-        dict: The API response containing prop data, or an empty dict on failure.
     """
     cache_key = f"props_{event_id}"
     if cache_key in CACHE and time.time() - CACHE[cache_key]["timestamp"] < CACHE_EXPIRATION.total_seconds():
@@ -137,12 +122,6 @@ def fetch_all_props(event_id):
 def get_risk_level(odds):
     """
     Assign a risk level and emoji based on betting odds.
-
-    Args:
-        odds (int): The American odds value.
-
-    Returns:
-        tuple: (risk_level, emoji) indicating the risk assessment.
     """
     if -450 <= odds <= -300:
         return "Very Safe", "🔵"
@@ -155,9 +134,45 @@ def get_risk_level(odds):
     else:
         return "Very High Risk", "🔴"
 
+def calculate_parlay_odds(american_odds_list):
+    """
+    Calculate the combined American odds for a parlay given a list of individual American odds.
+
+    Args:
+        american_odds_list (list): List of integers representing American odds (e.g., [-140, -250, +110]).
+
+    Returns:
+        int: The combined American odds for the parlay (e.g., +404), or None if the list is empty.
+    """
+    if not american_odds_list:
+        return None
+
+    # Convert each American odds to decimal odds
+    decimal_odds = []
+    for odds in american_odds_list:
+        if odds >= 0:
+            decimal = 1 + (odds / 100)
+        else:
+            decimal = 1 + (100 / abs(odds))
+        decimal_odds.append(decimal)
+
+    # Multiply all decimal odds together
+    combined_decimal = 1
+    for dec in decimal_odds:
+        combined_decimal *= dec
+
+    # Convert back to American odds
+    if combined_decimal >= 2:
+        parlay_odds = int((combined_decimal - 1) * 100)
+    else:
+        parlay_odds = int(-100 / (combined_decimal - 1))
+
+    return parlay_odds
+
 def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, confidence_level=None):
     """
     Fetch and process player props for a Same Game Parlay (SGP) with optimized selection logic.
+    Always includes the combined parlay odds for the selected props.
 
     Args:
         selected_game (dict): The selected game details.
@@ -167,14 +182,14 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
         confidence_level (tuple, optional): Confidence range filter (min, max).
 
     Returns:
-        dict: A dictionary containing the selected props, or empty if none are found.
+        dict: Contains 'selected_props' and 'parlay_odds'.
     """
-    # **Get the correct event ID**
+    # Get the correct event ID
     event_id = get_event_id(selected_game)
     if not event_id:
         return {}
 
-    # **Fetch prop data**
+    # Fetch prop data
     odds_data = fetch_all_props(event_id)
     if not odds_data.get("bookmakers"):
         st.error("❌ No bookmakers data available in the API response.")
@@ -184,10 +199,10 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
         st.error("❌ FanDuel data or markets not available for this event.")
         return {}
 
-    # **Initialize prop categories**
+    # Initialize prop categories
     prop_categories = {cat: [] for cat in category_map.values()}
 
-    # **Process each market**
+    # Process each market
     for market in fanduel["markets"]:
         for outcome in market.get("outcomes", []):
             player_name = outcome.get("description", "Unknown Player")
@@ -199,15 +214,15 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
             line_value = outcome.get("point", "N/A")
             odds = outcome["price"]
 
-            # **Convert Decimal Odds to American Odds**
+            # Convert Decimal Odds to American Odds
             if odds >= 2.0:
                 american_odds = int((odds - 1) * 100)
             else:
                 american_odds = int(-100 / (odds - 1))
             implied_prob = 1 / (1 + abs(american_odds) / 100) if american_odds < 0 else american_odds / (100 + american_odds)
-            ai_prob = implied_prob  # Placeholder: No AI model, using implied probability
+            ai_prob = implied_prob  # Placeholder: No AI model
             confidence_boost = round(ai_prob * 100, 2)
-            betting_edge = 0  # Since ai_prob equals implied_prob
+            betting_edge = 0
             risk_level, emoji = get_risk_level(american_odds)
             insight_reason = f"{player_name} has a {confidence_boost:.0f}% chance based on implied probability."
 
@@ -227,7 +242,7 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
             }
             prop_categories[category].append(prop_data)
 
-    # **Filter function**
+    # Filter function
     def satisfies_filters(prop):
         if min_odds is not None and prop["odds"] < min_odds:
             return False
@@ -237,33 +252,50 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
             return False
         return True
 
-    # **Select props**
+    # Select props
     selected_props = []
-
-    # Step 1: Select one prop from each category if available
     for category in prop_categories:
         category_props = [p for p in prop_categories[category] if satisfies_filters(p)]
         if category_props:
             best_prop = max(category_props, key=lambda x: x["confidence_boost"])
             selected_props.append(best_prop)
 
-    # Step 2: Fill remaining slots with highest-confidence props
     all_filtered_props = [
         p for cat in prop_categories.values()
         for p in cat if satisfies_filters(p) and p not in selected_props
     ]
     all_filtered_props_sorted = sorted(all_filtered_props, key=lambda x: x["confidence_boost"], reverse=True)
-
     while len(selected_props) < num_props and all_filtered_props_sorted:
         selected_props.append(all_filtered_props_sorted.pop(0))
 
-    # Step 3: Limit to the requested number of props
+    # Limit to the requested number of props
     selected_props = sorted(selected_props, key=lambda x: x["confidence_boost"], reverse=True)[:num_props]
 
-    # **Handle case where no props are selected**
+    # Handle case where no props are selected
     if not selected_props:
         st.warning("🚨 No valid props found after filtering.")
         return {}
 
-    # **Return the selected props**
-    return {"selected_props": selected_props}
+    # Calculate parlay odds
+    odds_list = [prop["odds"] for prop in selected_props]
+    parlay_odds = calculate_parlay_odds(odds_list)
+
+    # Return both selected props and parlay odds
+    return {
+        "selected_props": selected_props,
+        "parlay_odds": parlay_odds
+    }
+
+# Example usage
+if __name__ == "__main__":
+    # Assuming selected_game is defined elsewhere
+    # result = fetch_sgp_builder(selected_game, num_props=4)
+    # print(f"Selected Props: {len(result['selected_props'])}")
+    # for prop in result["selected_props"]:
+    #     print(f"{prop['player']}: {prop['prop']} {prop['over_under']} {prop['line']} @ {prop['odds']}")
+    # print(f"Parlay Odds: +{result['parlay_odds']}")
+
+    # Test with hardcoded odds
+    test_odds = [-140, -250, +110, -200]
+    parlay_result = calculate_parlay_odds(test_odds)
+    print(f"Parlay odds for {test_odds}: +{parlay_result}")
