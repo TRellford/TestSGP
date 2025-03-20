@@ -214,7 +214,7 @@ def fetch_sgp_builder(selected_game, num_props=1, min_odds=None, max_odds=None, 
 
         return {"selected_props": selected_props}
 
-        except Exception as e:
+    except Exception as e:
             st.error(f"🚨 Exception in fetch_sgp_builder(): {e}")
 
         return {}
